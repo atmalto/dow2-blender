@@ -1,0 +1,64 @@
+# ignore all pycache files recursively
+**/__pycache__/
+
+
+# ignore test files .anim, .hkx, .json, .xml in all directories
+**/*.hkx
+**/*.anim
+**/*.json
+**/*.xml
+!physics/data/filter_preset_library.json
+!ragdoll/data/template_library.json
+animation\ files/
+# ignore dev logs
+logs/
+
+# ignore Havok sdk folders
+havok_sdk_*/
+
+# ignore dev/test dir (fully ignored until a proper test suite is written)
+tests/
+working/SantosTools/outdated/
+
+# Santos Max Scripts
+max_script/
+
+# ignore hct docs
+hct_6.6_docs.txt
+
+
+# temp working files to ignore
+
+working/
+blender_hkx/legacy/
+
+# temp working files to ignore: ragdoll
+ragdoll/working/ragdoll_workspace/
+ragdoll/working/
+ragdoll/research/
+
+# temp working files to ignore: physics
+destruction_physics/
+destruction_physics/
+# mainly anim/ragdoll/pysics hkx; include only in distibution
+*.exe
+
+# ---------------------------------------------------------------------------
+# Publish prep: dev-only / backup / vendored folders (not for source repo)
+# ---------------------------------------------------------------------------
+# Environments & editor/tool config
+.venv/
+.vscode/
+.codewhale/
+
+# Backups & duplicated/nested copies
+blender_hkx_backup/
+dow2_tools/
+
+# Vendored / external tooling & generated assets
+AssetCc/
+material/dow2_.asm_and_.shader/
+blender_hkx/BatchProcess/
+
+# Packaged addon artifact
+dow2_tools.zip

@@ -1,0 +1,18 @@
+DEFAULT_RAGDOLL_BONE_ORDER = [
+    "Ragdoll_Bip01",
+    "Ragdoll_Bip01 L Thigh01",
+    "Ragdoll_Bip01 R Thigh01",
+    "Ragdoll_Bip01 Spine01",
+    "Ragdoll_Bip01 R Calf01",
+    "Ragdoll_Bip01 L Calf01",
+    "Ragdoll_Bip01 L UpperArm01",
+    "Ragdoll_Bip01 Neck01",
+    "Ragdoll_Bip01 R UpperArm01",
+    "Ragdoll_Bip01 L Forearm01",
+    "Ragdoll_Bip01 L Foot01",
+    "Ragdoll_Bip01 Head01",
+    "Ragdoll_Bip01 R Foot01",
+    "Ragdoll_Bip01 R Forearm01",
+    "Ragdoll_Bip01 L Hand01",
+    "Ragdoll_Bip01 R Hand01",
+]
