@@ -378,7 +378,7 @@ def _draw_export_section(layout, settings):
 class DOW2_PT_ragdoll_panel(Panel):
     """DoW2 ragdoll export using the frozen template library and native Havok backend"""
 
-    bl_label = "Ragdoll"
+    bl_label = "Ragdoll (Experimental)"
     bl_idname = "DOW2_PT_ragdoll_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"

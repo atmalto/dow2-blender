@@ -181,7 +181,7 @@ class DOW2_PT_object_panel(Panel):
 
 MODEL_PANEL_CLASSES = [
     DOW2_PT_header_panel,
-    DOW2_PT_mod_folder_panel,
+    # DOW2_PT_mod_folder_panel,
     DOW2_PT_model_panel,
     DOW2_PT_collection_setup,
     DOW2_PT_bones_markers,

@@ -429,11 +429,9 @@ def register():
     bpy.utils.register_class(DOW2_OT_export_material_warning)
     bpy.utils.register_class(DOW2_OT_export_skip_materials)
     bpy.utils.register_class(DOW2_OT_confirm_overwrite)
-    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
 
 def unregister():
-    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
     bpy.utils.unregister_class(DOW2_OT_confirm_overwrite)
     bpy.utils.unregister_class(DOW2_OT_export_skip_materials)
     bpy.utils.unregister_class(DOW2_OT_export_material_warning)

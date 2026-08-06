@@ -40,8 +40,11 @@ ragdoll/research/
 # temp working files to ignore: physics
 destruction_physics/
 destruction_physics/
-# mainly anim/ragdoll/pysics hkx; include only in distibution
+# Compiled binaries — shipped only in the release package, never in git history
 *.exe
+*.dll
+*.lib
+*.pdb
 
 # ---------------------------------------------------------------------------
 # Publish prep: dev-only / backup / vendored folders (not for source repo)
@@ -62,3 +65,6 @@ blender_hkx/BatchProcess/
 
 # Packaged addon artifact
 dow2_tools.zip
+
+# Release build output
+dist/

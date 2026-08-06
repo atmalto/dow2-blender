@@ -425,15 +425,11 @@ def register():
     bpy.types.Scene.dow2_pending_single_import_missing_bones = bpy.props.StringProperty(default="")
     if _dow2_single_import_save_post not in bpy.app.handlers.save_post:
         bpy.app.handlers.save_post.append(_dow2_single_import_save_post)
-    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
-    bpy.types.TOPBAR_MT_file_import.append(menu_func_import_batch)
 
 
 def unregister():
     if _dow2_single_import_save_post in bpy.app.handlers.save_post:
         bpy.app.handlers.save_post.remove(_dow2_single_import_save_post)
-    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import_batch)
-    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     del bpy.types.Scene.dow2_pending_single_import_missing_bones
     del bpy.types.Scene.dow2_pending_single_import_tracked_bone_names
     del bpy.types.Scene.dow2_pending_single_import_bone_names

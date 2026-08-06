@@ -1,3 +1,10 @@
+"""DoW2 ragdoll package.
+
+STATUS: Experimental. Ragdoll authoring/export depends on a frozen template
+library and the native Havok backend; behaviour may change and is not fully
+validated.
+"""
+
 from .constants import DEFAULT_RAGDOLL_BONE_ORDER
 from .field_specs import EXPOSED_FIELD_SPECS, LOCKED_BACKEND_FIELDS, TEMPLATE_DRIVEN_FIELDS
 from .templates import load_template_library, list_template_tree

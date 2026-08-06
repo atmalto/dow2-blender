@@ -85,7 +85,7 @@ def _draw_selected_hull_section(layout, context):
 class DOW2_PT_physics_panel(Panel):
     """DoW2 destruction physics generation and export"""
 
-    bl_label = "Physics"
+    bl_label = "Physics (Experimental)"
     bl_idname = "DOW2_PT_physics_panel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"

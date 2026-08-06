@@ -221,6 +221,55 @@ class DOW2_OT_scene_graph_import_map(Operator):
         return {'FINISHED'}
 
 
+class DOW2_PT_map_io(Panel):
+    """DoW2 scenario map import (experimental)"""
+
+    bl_label = "Map I/O (Experimental)"
+    bl_idname = "DOW2_PT_map_io"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "DoW2"
+    bl_order = 65
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        scene = context.scene
+
+        layout.prop(scene, "dow2_map_import_path", text="Scenario")
+        row = layout.row(align=True)
+        row.operator("dow2.scene_graph_pick_map_path", icon='FILE_FOLDER')
+        row.operator("dow2.scene_graph_import_map", icon='IMPORT')
+
+        options = layout.box()
+        options.label(text="Import Selection")
+        col = options.column(align=True)
+        col.prop(scene, "dow2_map_import_mesh")
+        col.prop(scene, "dow2_map_import_markers")
+        col.prop(scene, "dow2_map_import_nav_plane")
+        col.prop(scene, "dow2_map_import_textures")
+        col.prop(scene, "dow2_map_import_objects")
+
+        last_map = str(getattr(scene, "dow2_map_last_import_name", "")).strip()
+        if last_map:
+            summary = layout.box()
+            summary.label(text="Last Import", icon='INFO')
+            summary.label(text=f"Map: {last_map}")
+            summary.label(text=f"Collection: {scene.dow2_map_last_import_collection}")
+            summary.label(text=f"Terrain: {'yes' if scene.dow2_map_last_import_has_terrain else 'no'}")
+            terrain_name = str(getattr(scene, "dow2_map_last_import_terrain_object", "")).strip()
+            if terrain_name:
+                terrain_op = summary.operator("dow2.scene_graph_select_object", text="Select Terrain", icon='MESH_GRID')
+                terrain_op.object_name = terrain_name
+            summary.label(text=f"Markers: {scene.dow2_map_last_import_marker_count}")
+            summary.label(text=f"Nav: {'yes' if scene.dow2_map_last_import_has_nav else 'no'}")
+            nav_name = str(getattr(scene, "dow2_map_last_import_nav_object", "")).strip()
+            if nav_name:
+                nav_op = summary.operator("dow2.scene_graph_select_object", text="Select Nav", icon='MESH_PLANE')
+                nav_op.object_name = nav_name
+            summary.label(text=f"Object Proxies: {scene.dow2_map_last_import_object_count}")
+
+
 class DOW2_PT_scene_graph(Panel):
     """DoW2-aware hierarchy summary"""
 
@@ -241,40 +290,6 @@ class DOW2_PT_scene_graph(Panel):
             return
 
         layout.operator("dow2.clear_scene_graph_scene", icon='TRASH')
-
-        header, body = layout.panel("dow2_scene_graph_map_io", default_closed=False)
-        header.label(text="Map I/O", icon='IMPORT')
-        if body is not None:
-            body.prop(context.scene, "dow2_map_import_path", text="Scenario")
-            row = body.row(align=True)
-            row.operator("dow2.scene_graph_pick_map_path", icon='FILE_FOLDER')
-            row.operator("dow2.scene_graph_import_map", icon='IMPORT')
-            options = body.box()
-            options.label(text="Import Selection")
-            col = options.column(align=True)
-            col.prop(context.scene, "dow2_map_import_mesh")
-            col.prop(context.scene, "dow2_map_import_markers")
-            col.prop(context.scene, "dow2_map_import_nav_plane")
-            col.prop(context.scene, "dow2_map_import_textures")
-            col.prop(context.scene, "dow2_map_import_objects")
-            last_map = str(getattr(context.scene, "dow2_map_last_import_name", "")).strip()
-            if last_map:
-                summary = body.box()
-                summary.label(text="Last Import", icon='INFO')
-                summary.label(text=f"Map: {last_map}")
-                summary.label(text=f"Collection: {context.scene.dow2_map_last_import_collection}")
-                summary.label(text=f"Terrain: {'yes' if context.scene.dow2_map_last_import_has_terrain else 'no'}")
-                terrain_name = str(getattr(context.scene, "dow2_map_last_import_terrain_object", "")).strip()
-                if terrain_name:
-                    terrain_op = summary.operator("dow2.scene_graph_select_object", text="Select Terrain", icon='MESH_GRID')
-                    terrain_op.object_name = terrain_name
-                summary.label(text=f"Markers: {context.scene.dow2_map_last_import_marker_count}")
-                summary.label(text=f"Nav: {'yes' if context.scene.dow2_map_last_import_has_nav else 'no'}")
-                nav_name = str(getattr(context.scene, "dow2_map_last_import_nav_object", "")).strip()
-                if nav_name:
-                    nav_op = summary.operator("dow2.scene_graph_select_object", text="Select Nav", icon='MESH_PLANE')
-                    nav_op.object_name = nav_name
-                summary.label(text=f"Object Proxies: {context.scene.dow2_map_last_import_object_count}")
 
         header, body = layout.panel("dow2_scene_graph_skeleton", default_closed=False)
         header.label(text="Skeleton", icon='ARMATURE_DATA')
@@ -385,6 +400,7 @@ SCENE_GRAPH_CLASSES = [
     DOW2_OT_clear_scene_graph_scene,
     DOW2_OT_scene_graph_pick_map_path,
     DOW2_OT_scene_graph_import_map,
+    DOW2_PT_map_io,
     DOW2_PT_scene_graph,
 ]
 
@@ -438,6 +454,7 @@ __all__ = [
     "DOW2_OT_scene_graph_pick_map_path",
     "DOW2_OT_scene_graph_select_material",
     "DOW2_OT_scene_graph_select_object",
+    "DOW2_PT_map_io",
     "DOW2_PT_scene_graph",
     "SCENE_GRAPH_CLASSES",
     "register_scene_graph_state",
