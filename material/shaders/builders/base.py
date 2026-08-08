@@ -18,6 +18,7 @@ from ...definitions import (
     VAR_TYPE_MATRIX4,
     VAR_TYPE_TEXTURE,
 )
+from ...schema import ensure_material_schema_properties, get_shader_schema
 from ..interfaces import MaterialBuildContext, MaterialBuildState, TextureSlotHandler
 from ..layout import organize_material_nodes
 from ..node_passes import BaseColorNodePasses
@@ -321,6 +322,8 @@ class DefaultShaderMaterialBuilder:
 
     def build_material(self, creator: Any, mat_data: Any) -> Any:
         ctx = self._setup_graph(mat_data)
+        schema = get_shader_schema(mat_data.shader_name, mat_data.shader_path, getattr(creator, "game_data_path", ""))
+        ensure_material_schema_properties(ctx.mat, schema)
         state = MaterialBuildState(tex_x=-600, tex_y=400, tex_y_step=-300)
         texture_handlers = self.get_texture_handlers()
 

@@ -1,21 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, Optional, Tuple
-
 import bpy
 
 from .data import MaterialVariable, RelicMaterialData
-from .definitions import (
-    VAR_TYPE_BOOL,
-    VAR_TYPE_FLOAT,
-    VAR_TYPE_FLOAT2,
-    VAR_TYPE_FLOAT3,
-    VAR_TYPE_FLOAT4,
-    VAR_TYPE_INT,
-    VAR_TYPE_MATRIX4,
-    VAR_TYPE_TEXTURE,
-)
+from .schema import schema_material_variables
 
 
 class RelicMaterialExporter:
@@ -24,63 +12,13 @@ class RelicMaterialExporter:
     def __init__(self, data_path: str):
         self.data_path = data_path
 
-    def _coerce_sequence_value(self, value: Any) -> Optional[Tuple[Any, ...]]:
-        """Normalize Blender array-like custom properties into plain tuples for export."""
-        if isinstance(value, (str, bytes, bytearray)):
-            return None
-        if isinstance(value, (list, tuple)):
-            return tuple(value)
-        if isinstance(value, Sequence):
-            return tuple(value)
-        if hasattr(value, "to_list"):
-            converted = value.to_list()
-            if isinstance(converted, list):
-                return tuple(converted)
-        try:
-            return tuple(value)
-        except TypeError:
-            return None
-
     def export_material(self, mat: bpy.types.Material) -> RelicMaterialData:
         """Export a Blender material to Relic material data."""
         mat_data = RelicMaterialData(name=mat.name)
         mat_data.shader_name = mat.get("dow2_shader", "")
         mat_data.shader_path = mat.get("dow2_shader_path", "")
 
-        for key in mat.keys():
-            if not key.startswith("dow2_"):
-                continue
-            if key in ["dow2_shader", "dow2_shader_path"]:
-                continue
-
-            var_name = key[5:]
-            value = mat[key]
-            sequence_value = self._coerce_sequence_value(value)
-
-            if isinstance(value, bool):
-                var_type = VAR_TYPE_BOOL
-            elif isinstance(value, int):
-                var_type = VAR_TYPE_INT
-            elif isinstance(value, float):
-                var_type = VAR_TYPE_FLOAT
-            elif isinstance(value, str):
-                var_type = VAR_TYPE_TEXTURE
-            elif sequence_value is not None:
-                value = sequence_value
-                if len(value) == 2:
-                    var_type = VAR_TYPE_FLOAT2
-                elif len(value) == 3:
-                    var_type = VAR_TYPE_FLOAT3
-                elif len(value) == 4:
-                    var_type = VAR_TYPE_FLOAT4
-                elif len(value) == 16:
-                    var_type = VAR_TYPE_MATRIX4
-                else:
-                    continue
-            else:
-                continue
-
-            mat_data.variables.append(MaterialVariable(name=var_name, var_type=var_type, value=value))
+        mat_data.variables.extend(schema_material_variables(mat, self.data_path))
 
         return mat_data
 

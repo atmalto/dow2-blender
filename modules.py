@@ -26,10 +26,13 @@ class DoW2ModuleManager:
     
     def set_paths(self, dow2_path: str, module_path: str = ""):
         self.dow2_path = dow2_path
-        if module_path:
-            self.data_path = module_path
-        else:
-            self.data_path = os.path.join(dow2_path, "Codex", "Data")
+        self.data_path = ""
+        for candidate in (module_path, dow2_path):
+            candidate = os.path.normpath(str(candidate or "").strip())
+            if candidate and os.path.isdir(candidate):
+                data_candidate = os.path.join(candidate, "data")
+                self.data_path = os.path.normpath(data_candidate) if os.path.isdir(data_candidate) else candidate
+                break
     
     def get_data_path(self, module_name: str = "") -> str:
         if module_name and module_name in self.modules:

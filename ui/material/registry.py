@@ -15,7 +15,6 @@ from .panels_main import DOW2_PT_material_panel
 from .panels_palettes import DOW2_PT_material_palettes
 from .panels_params import DOW2_PT_material_params
 from .panels_textures import DOW2_PT_material_textures
-from .panels_vectors import DOW2_PT_material_vectors
 from .texture_ops import DOW2_OT_clear_texture, DOW2_OT_set_texture
 
 
@@ -31,7 +30,6 @@ MATERIAL_CLASSES = [
     DOW2_PT_material_palettes,
     DOW2_PT_material_textures,
     DOW2_PT_material_params,
-    DOW2_PT_material_vectors,
 ]
 
 
@@ -48,7 +46,6 @@ __all__ = [
     "DOW2_PT_material_palettes",
     "DOW2_PT_material_params",
     "DOW2_PT_material_textures",
-    "DOW2_PT_material_vectors",
     "get_or_create_default_material",
     "is_relic_material",
     "register_material_panel_state",

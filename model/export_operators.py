@@ -1,7 +1,7 @@
 import bpy
 import os
 
-from ..utils import load_persisted_settings, store_persisted_settings
+from ..utils import load_persisted_settings, set_file_browser_start, store_persisted_settings
 from . import utils as model_utils
 from .export_utils import (
     DAMAGE_STATE_ITEMS,
@@ -229,6 +229,7 @@ class DOW2_OT_export_model(bpy.types.Operator):
 
     def invoke(self, context, event):
         has_persisted_settings = _apply_persisted_model_export_settings(self, context)
+        set_file_browser_start(self, context)
 
         model_name = str(context.scene.get("dow2_model_name") or "").strip()
         simbox = model_utils.find_bounding_box_object(context.scene, "simbox", model_name)

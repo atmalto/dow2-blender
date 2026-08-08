@@ -9,7 +9,7 @@ from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
 from mathutils import Vector
 
-from ..utils import dx_to_blender_position
+from ..utils import dx_to_blender_position, get_file_browser_start_path
 from . import exporter, importer, presets, utils
 
 
@@ -113,7 +113,11 @@ class DOW2_OT_export_physics_hulls(Operator, ExportHelper):
     def invoke(self, context, event):
         if not self.filepath:
             default_name = "dow2_physics_export.hkx"
-            self.filepath = os.path.join(exporter.ADDON_PATH, "destruction_physics", "outputs", default_name)
+            start_path = get_file_browser_start_path(context)
+            if start_path:
+                self.filepath = os.path.join(start_path, default_name)
+            else:
+                self.filepath = os.path.join(exporter.ADDON_PATH, "destruction_physics", "outputs", default_name)
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 

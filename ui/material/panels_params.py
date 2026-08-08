@@ -1,6 +1,12 @@
 from bpy.types import Panel
 
-from ...material.definitions import BOOL_PARAMS, FLOAT_PARAMS, INT_PARAMS
+from ...material.definitions import VAR_TYPE_BOOL, VAR_TYPE_FLOAT, VAR_TYPE_INT
+from ...material.schema import (
+    scalar_schema_variables,
+    shader_param_label,
+    shader_schema_for_material,
+)
+from ...material.service import resolve_dow2_data_path
 
 
 class DOW2_PT_material_params(Panel):
@@ -21,44 +27,38 @@ class DOW2_PT_material_params(Panel):
     def draw(self, context):
         layout = self.layout
         mat = context.object.active_material
-        shader_vars = mat.get("dow2_shader_vars", "").split(",") if mat.get("dow2_shader_vars") else []
+        schema = shader_schema_for_material(mat, resolve_dow2_data_path(context, ""))
+
+        if not schema.variables:
+            layout.label(text="No shader schema found", icon="ERROR")
+            return
 
         box = layout.box()
-        box.label(text="Boolean", icon="CHECKBOX_HLT")
-        for param, label in BOOL_PARAMS:
-            enabled = not shader_vars or param in shader_vars or not mat.get("dow2_shader")
+        box.label(text="Boolean")
+        for var in scalar_schema_variables(schema, VAR_TYPE_BOOL):
+            prop_name = f"dow2_{var.name}"
+            if prop_name not in mat:
+                continue
             row = box.row()
-            row.enabled = enabled
-
-            prop_name = f"dow2_{param}"
-            current = mat.get(prop_name, False)
-            icon = 'CHECKBOX_HLT' if current else 'CHECKBOX_DEHLT'
-            op = row.operator("dow2.toggle_bool_param", text=label, icon=icon, depress=current)
-            op.param_name = param
+            row.prop(mat, f'["{prop_name}"]', text=shader_param_label(var.name))
 
         box = layout.box()
-        box.label(text="Integer", icon="LINENUMBERS_ON")
-        for param, label in INT_PARAMS:
-            enabled = not shader_vars or param in shader_vars or not mat.get("dow2_shader")
+        box.label(text="Integer")
+        for var in scalar_schema_variables(schema, VAR_TYPE_INT):
+            prop_name = f"dow2_{var.name}"
+            if prop_name not in mat:
+                continue
             row = box.row()
-            row.enabled = enabled
-            row.label(text=label)
-
-            prop_name = f"dow2_{param}"
-            current = mat.get(prop_name, 0)
-            row.label(text=str(current))
+            row.prop(mat, f'["{prop_name}"]', text=shader_param_label(var.name))
 
         box = layout.box()
-        box.label(text="Float", icon="DRIVER_DISTANCE")
-        for param, label, default in FLOAT_PARAMS:
-            enabled = not shader_vars or param in shader_vars or not mat.get("dow2_shader")
+        box.label(text="Float")
+        for var in scalar_schema_variables(schema, VAR_TYPE_FLOAT):
+            prop_name = f"dow2_{var.name}"
+            if prop_name not in mat:
+                continue
             row = box.row()
-            row.enabled = enabled
-            row.label(text=label)
-
-            prop_name = f"dow2_{param}"
-            current = mat.get(prop_name, default)
-            row.label(text=f"{current:.3f}")
+            row.prop(mat, f'["{prop_name}"]', text=shader_param_label(var.name))
 
 
 __all__ = ["DOW2_PT_material_params"]

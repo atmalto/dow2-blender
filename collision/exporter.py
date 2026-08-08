@@ -12,7 +12,7 @@ from bpy_extras.io_utils import ExportHelper
 
 from .collision_io import write_collision, CollisionData, CollisionMesh
 from . import utils as collision_utils
-from ..utils import blender_to_dx_position
+from ..utils import blender_to_dx_position, set_file_browser_start
 
 
 class DOW2_OT_export_collision(Operator, ExportHelper):
@@ -43,6 +43,11 @@ class DOW2_OT_export_collision(Operator, ExportHelper):
                     "Recommended for accurate collision geometry",
         default=True,
     )
+
+    def invoke(self, context, event):
+        set_file_browser_start(self, context)
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
     
     def execute(self, context):
         grouped_objects = collision_utils.collect_collision_state_meshes(context.scene)

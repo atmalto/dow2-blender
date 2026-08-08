@@ -14,36 +14,44 @@ SHADER_PRESET_LABELS = {key: label for key, label, _ in SHADER_PRESETS}
 
 SHADER_PRESET_CONFIG = {
     "dow2_unit": {
+        "shader": "dow2_unit",
         "textures": ["diffuseTex", "normalMap", "specularTex", "teamTex"],
-        "params": {"useLighting": True, "useDepthTest": True, "glossValue": 0.5},
+        "params": {},
     },
     "dow2_unit_alpha": {
+        "shader": "dow2_unit_alpha",
         "textures": ["diffuseTex", "normalMap", "specularTex", "teamTex"],
-        "params": {"useLighting": True, "useDepthTest": True, "alphaTest": True, "glossValue": 0.5},
+        "params": {},
     },
     "dow2_unit_emissive": {
+        "shader": "dow2_unit",
         "textures": ["diffuseTex", "normalMap", "specularTex", "teamTex", "emissiveTex"],
-        "params": {"useLighting": True, "useDepthTest": True, "glossValue": 0.5, "emissiveMultiplier": 1.0},
+        "params": {"emissiveMultiplier": 1.0},
     },
     "dow2_building": {
+        "shader": "dow2_building_brick",
         "textures": ["diffuseTex", "normalMap", "specularTex"],
-        "params": {"useLighting": True, "useDepthTest": True, "glossValue": 0.3},
+        "params": {"glossValue": 0.3},
     },
     "dow2_building_destruct": {
+        "shader": "dow2_building_brick_scar_dual",
         "textures": ["diffuseTex", "normalMap", "specularTex", "damageDiffuseTex", "damageNormalTex"],
-        "params": {"useLighting": True, "useDepthTest": True, "glossValue": 0.3, "damageTexTilingFactor": 1.0},
+        "params": {"glossValue": 0.3, "damageTexTilingFactor": 1.0},
     },
     "dow2_terrain": {
-        "textures": ["diffuseTex", "normalMap"],
-        "params": {"useLighting": True, "useDepthTest": True},
+        "shader": "dow2_terrain_object",
+        "textures": ["cliffTex1", "cliffNormalTex1", "grassTex1", "grassNormalTex1"],
+        "params": {},
     },
     "dow2_fx": {
+        "shader": "dow2_fxmesh_alpha",
         "textures": ["diffuseTex"],
-        "params": {"useLighting": False, "alphaTest": True},
+        "params": {"useLighting": False, "useDepthTest": True},
     },
     "dow2_decal": {
+        "shader": "dow2_object",
         "textures": ["diffuseTex", "normalMap"],
-        "params": {"useLighting": True, "useDepthTest": False, "alphaTest": True},
+        "params": {},
     },
 }
 

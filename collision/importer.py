@@ -13,7 +13,7 @@ from mathutils import Vector
 
 from .collision_io import read_collision, CollisionData, CollisionMesh
 from . import utils as collision_utils
-from ..utils import dx_to_blender_position
+from ..utils import dx_to_blender_position, set_file_browser_start
 
 
 class DOW2_OT_import_collision(Operator, ImportHelper):
@@ -54,6 +54,11 @@ class DOW2_OT_import_collision(Operator, ImportHelper):
         ],
         default='WIRE',
     )
+
+    def invoke(self, context, event):
+        set_file_browser_start(self, context)
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
     
     def execute(self, context):
         # Read the collision file

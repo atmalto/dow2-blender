@@ -2,7 +2,7 @@ import os
 
 import bpy
 
-from ..utils import load_persisted_settings, store_persisted_settings
+from ..utils import load_persisted_settings, set_file_browser_start, store_persisted_settings
 from .import_types import ImportOptions
 
 
@@ -178,6 +178,7 @@ class DOW2_OT_import_model(bpy.types.Operator):
 
     def invoke(self, context, event):
         _apply_persisted_model_import_settings(self, context)
+        set_file_browser_start(self, context)
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 

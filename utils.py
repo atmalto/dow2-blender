@@ -1,4 +1,5 @@
 import json
+import os
 
 import bpy
 from mathutils import Matrix, Vector
@@ -10,6 +11,7 @@ _ADDON_PREFERENCE_IDS = tuple(dict.fromkeys((
     "dow2_tools",
 )))
 _USER_PREFERENCES_SAVE_PENDING = False
+DEFAULT_DOW2_RETRIBUTION_PATH = r"C:\Program Files (x86)\Steam\steamapps\common\Dawn of War II - Retribution"
 
 
 def _save_user_preferences_timer():
@@ -53,6 +55,58 @@ def get_addon_preferences(context=None):
         if addon is not None:
             return addon.preferences
     return None
+
+
+def _existing_directory(path: str) -> str:
+    value = bpy.path.abspath(str(path or "").strip())
+    return os.path.normpath(value) if value and os.path.isdir(value) else ""
+
+
+def get_active_mod_root(context=None) -> str:
+    prefs = get_addon_preferences(context)
+    if prefs is not None:
+        for attr_name in ("module_path", "dow2_path"):
+            path = _existing_directory(getattr(prefs, attr_name, ""))
+            if path:
+                return path
+    return _existing_directory(DEFAULT_DOW2_RETRIBUTION_PATH)
+
+
+def get_active_data_root(context=None) -> str:
+    root = get_active_mod_root(context)
+    if not root:
+        return ""
+    data_root = os.path.join(root, "data")
+    return os.path.normpath(data_root) if os.path.isdir(data_root) else root
+
+
+def get_file_browser_start_path(context=None, *subdirs: str) -> str:
+    root = get_active_mod_root(context)
+    if not root:
+        return ""
+    if subdirs:
+        candidate = os.path.join(root, *subdirs)
+        if os.path.isdir(candidate):
+            return os.path.normpath(candidate)
+    return root
+
+
+def get_shader_browser_start_path(context=None) -> str:
+    root = get_active_mod_root(context)
+    if not root:
+        return ""
+    shader_root = os.path.join(root, "data", "shaders")
+    if os.path.isdir(shader_root):
+        return os.path.normpath(shader_root)
+    return root
+
+
+def set_file_browser_start(operator, context=None, *subdirs: str, attr_name: str = "filepath") -> None:
+    if str(getattr(operator, attr_name, "") or "").strip():
+        return
+    start_path = get_file_browser_start_path(context, *subdirs)
+    if start_path:
+        setattr(operator, attr_name, start_path + os.sep)
 
 
 def load_persisted_settings(context, attr_name: str) -> dict:
@@ -213,11 +267,16 @@ __all__ = [
     "dx_to_blender_matrix",
     "dx_to_blender_position",
     "find_object_by_name",
+    "get_active_data_root",
+    "get_active_mod_root",
     "get_addon_preferences",
+    "get_file_browser_start_path",
+    "get_shader_browser_start_path",
     "link_object_to_collection",
     "load_persisted_settings",
     "pack_vector",
     "save_user_preferences",
+    "set_file_browser_start",
     "store_persisted_settings",
     "unpack_vector",
 ]

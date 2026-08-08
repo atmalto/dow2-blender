@@ -131,8 +131,8 @@ class DoW2ModelExporter:
     def _export_single_material(self, mat: bpy.types.Material, archive_path: str):
         export_single_material(self, mat, archive_path)
 
-    def _export_material_variable(self, var_name: str, value, archive_path: str):
-        export_material_variable(self, var_name, value, archive_path)
+    def _export_material_variable(self, var_name: str, value, archive_path: str, var_type=None):
+        export_material_variable(self, var_name, value, archive_path, var_type)
 
     def _get_or_create_skeleton_root(self) -> Optional[bpy.types.Object]:
         return get_or_create_skeleton_root(self)

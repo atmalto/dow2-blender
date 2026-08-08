@@ -5,7 +5,7 @@ from bpy.app.handlers import persistent
 from bpy.props import BoolProperty, CollectionProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 
-from ..utils import get_addon_preferences
+from ..utils import get_addon_preferences, set_file_browser_start
 from ..animation.hkanim import (
     HkAnimToolError,
     build_default_pack_output_path,
@@ -173,6 +173,7 @@ class DOW2_OT_pack_hkanim(Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        set_file_browser_start(self, context, attr_name="directory")
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -216,6 +217,7 @@ class DOW2_OT_unpack_hkanim(Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        set_file_browser_start(self, context)
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 

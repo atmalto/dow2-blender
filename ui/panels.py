@@ -84,9 +84,20 @@ def register():
     register_animation_panel_state()
 
 
+def _unregister_removed_material_vectors_panel():
+    cls = getattr(bpy.types, "DOW2_PT_material_vectors", None)
+    if cls is None:
+        return
+    try:
+        bpy.utils.unregister_class(cls)
+    except RuntimeError:
+        pass
+
+
 def unregister():
     unregister_animation_panel_state()
     unregister_material_panel_state()
+    _unregister_removed_material_vectors_panel()
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
     unregister_scene_graph_state()

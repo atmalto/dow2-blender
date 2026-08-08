@@ -55,7 +55,7 @@ Do not use Blender's normal add-on installer for this release layout. Unpack the
   - Mouse wheel: scale up / down
   - LMB: move badge
   - Q/E: rotate badge, CTRL + Q/E: rotate 90 degrees
-  - Esc: exit badge editing mode
+  - Esc/Enter: cancel/apply changes
 - Material preview controls include team color, emissive, specularity intensity, and specularity tint. These can also be controlled in the shader node panel, but they are for preview only.
 - The add-on relies heavily on collections for LoDs and health bins, and on the armature name "DoW2_Armature" for model and animation export. If export fails or the output is wrong, check naming and collection layout first.
   - Note on LoD collections: since Blender only allows unique names for collections, multiple health bins require LoDs to have different names, hence the add-on processes them in an indexed fashion, ex: `healthy: lod0, light_damage: lod0.001, heavy_damage: lod0.002, wreck: lod0.003, etc`

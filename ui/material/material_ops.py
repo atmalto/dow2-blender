@@ -4,9 +4,12 @@ import bpy
 from bpy.props import EnumProperty, StringProperty
 from bpy.types import Operator
 
+from ...material.creator import RelicMaterialCreator
 from ...material.definitions import DEFAULT_MATERIAL_NAME
 from ...material.presets import SHADER_PRESETS, SHADER_PRESET_CONFIG, SHADER_PRESET_LABELS
-from ...material.service import configure_relic_material, is_relic_material
+from ...material.schema import material_data_from_shader_schema, parse_shader_schema_file
+from ...material.service import configure_relic_material, is_relic_material, resolve_dow2_data_path
+from ...utils import get_shader_browser_start_path
 
 
 class DOW2_OT_load_shader(Operator):
@@ -33,61 +36,41 @@ class DOW2_OT_load_shader(Operator):
             self.report({'ERROR'}, "No material selected")
             return {'CANCELLED'}
 
-        shader_vars = self.parse_shader(self.filepath)
+        schema = self.parse_shader_schema(self.filepath)
+        shader_vars = schema.names()
 
         configure_relic_material(
             context,
             mat,
-            shader_name=os.path.splitext(os.path.basename(self.filepath))[0],
+            shader_name=schema.shader_name,
             shader_path=self.filepath,
             shader_vars=shader_vars,
+            rebuild=False,
         )
+        mat_data = material_data_from_shader_schema(mat.name, schema)
+        RelicMaterialCreator(resolve_dow2_data_path(context, self.filepath)).create_material(mat_data)
 
         self.report({'INFO'}, f"Loaded shader with {len(shader_vars)} variables")
         return {'FINISHED'}
 
     def invoke(self, context, event):
-        prefs = context.preferences.addons.get('dow2_tools')
-        if prefs:
-            dow2_path = prefs.preferences.dow2_path
-            shaders_path = os.path.join(dow2_path, "Codex", "Data", "shaders")
-            if os.path.exists(shaders_path):
-                self.filepath = shaders_path + os.sep
-
+        start_path = get_shader_browser_start_path(context)
+        if start_path:
+            self.filepath = start_path + os.sep
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
     def parse_shader(self, filepath):
-        variables = []
+        return self.parse_shader_schema(filepath).names()
+
+    def parse_shader_schema(self, filepath):
         if not os.path.exists(filepath):
-            return variables
-
+            return parse_shader_schema_file("")
         try:
-            with open(filepath, 'r') as handle:
-                name = None
-                var_type = None
-                for line in handle:
-                    line = line.strip()
-                    if '=' not in line:
-                        continue
-
-                    parts = line.split('=', 1)
-                    key = parts[0].strip().strip('"')
-                    value = parts[1].strip().strip('",')
-
-                    if key == "name":
-                        name = value
-                    elif key == "type":
-                        var_type = value
-
-                    if name and var_type:
-                        variables.append(name)
-                        name = None
-                        var_type = None
+            return parse_shader_schema_file(filepath)
         except Exception as exc:
             print(f"Error parsing shader: {exc}")
-
-        return variables
+            return parse_shader_schema_file("")
 
 
 class DOW2_OT_create_relic_material(Operator):
@@ -116,6 +99,7 @@ class DOW2_OT_create_relic_material(Operator):
         param_overrides = {}
         if self.shader_preset in SHADER_PRESET_CONFIG:
             config = SHADER_PRESET_CONFIG[self.shader_preset]
+            shader_name = config.get("shader", shader_name)
             shader_vars = list(config.get("textures", []))
             param_overrides.update(config.get("params", {}))
 

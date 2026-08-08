@@ -5,6 +5,7 @@ from bpy.types import Operator
 
 from ...material.badges import clear_badge_preview, is_badge_material as is_badge_preview_material
 from ...material.service import rebuild_dow2_material_graph
+from ...utils import get_active_data_root, set_file_browser_start
 
 
 class DOW2_OT_set_texture(Operator):
@@ -34,13 +35,11 @@ class DOW2_OT_set_texture(Operator):
             return {'CANCELLED'}
 
         tex_path = self.filepath
-        prefs = context.preferences.addons.get('dow2_tools')
-        if prefs:
-            data_path = os.path.join(prefs.preferences.dow2_path, "Codex", "Data")
-            if tex_path.lower().startswith(data_path.lower()):
-                tex_path = tex_path[len(data_path):].lstrip(os.sep).lstrip('/')
-                if tex_path.lower().endswith('.dds'):
-                    tex_path = tex_path[:-4]
+        data_path = get_active_data_root(context)
+        if data_path and tex_path.lower().startswith(data_path.lower()):
+            tex_path = tex_path[len(data_path):].lstrip(os.sep).lstrip('/')
+            if tex_path.lower().endswith('.dds'):
+                tex_path = tex_path[:-4]
 
         mat[f"dow2_{self.texture_slot}"] = tex_path
         self.update_material_nodes(context, mat)
@@ -49,6 +48,7 @@ class DOW2_OT_set_texture(Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        set_file_browser_start(self, context)
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 

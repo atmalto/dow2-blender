@@ -4,6 +4,8 @@ import bpy
 
 from .definitions import BOOL_PARAMS, FLOAT_PARAMS, INT_PARAMS, TEXTURE_SLOTS
 from .rebuild import rebuild_material_graph
+from .schema import ensure_material_schema_properties, get_shader_schema
+from ..utils import get_active_data_root
 
 
 _TEXTURE_SLOT_NAMES = {slot_name for slot_name, _label in TEXTURE_SLOTS}
@@ -13,13 +15,9 @@ _FLOAT_PARAM_DEFAULTS = {param: default for param, _label, default in FLOAT_PARA
 
 
 def resolve_dow2_data_path(context, fallback_path: str = "") -> str:
-    prefs = None
-    if context is not None:
-        prefs = context.preferences.addons.get('dow2_tools')
-    if prefs:
-        dow2_path = str(getattr(prefs.preferences, 'dow2_path', '') or '').strip()
-        if dow2_path:
-            return os.path.join(dow2_path, 'Codex', 'Data')
+    root = get_active_data_root(context)
+    if root:
+        return root
     return fallback_path or os.getcwd()
 
 
@@ -68,23 +66,33 @@ def configure_relic_material(
     shader_path: str = "",
     shader_vars=(),
     param_overrides=None,
+    rebuild: bool = True,
 ) -> None:
     mat.use_nodes = True
     mat["dow2_shader"] = shader_name or ""
     mat["dow2_shader_path"] = shader_path or ""
-    if shader_vars:
-        mat["dow2_shader_vars"] = ",".join(shader_vars)
+
+    schema = get_shader_schema(shader_name, shader_path, resolve_dow2_data_path(context, ""))
+    declared_vars = schema.names() or list(shader_vars or [])
+    if declared_vars:
+        mat["dow2_shader_vars"] = ",".join(declared_vars)
     elif "dow2_shader_vars" in mat:
         del mat["dow2_shader_vars"]
 
-    ensure_relic_material_property_defaults(mat)
-    seed_declared_shader_properties(mat, shader_vars)
+    mat["dow2_is_relic_material"] = True
+    if schema.variables:
+        ensure_material_schema_properties(mat, schema)
+    else:
+        ensure_relic_material_property_defaults(mat)
+        seed_declared_shader_properties(mat, shader_vars)
 
     if param_overrides:
         for param_name, value in param_overrides.items():
-            mat[f"dow2_{param_name}"] = value
+            if not schema.variables or schema.get(param_name) is not None:
+                mat[f"dow2_{param_name}"] = value
 
-    rebuild_dow2_material_graph(context, mat, shader_path)
+    if rebuild:
+        rebuild_dow2_material_graph(context, mat, shader_path)
 
 
 def is_relic_material(mat: bpy.types.Material) -> bool:

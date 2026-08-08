@@ -2,6 +2,8 @@ from bpy.types import Panel
 
 from ...material.badges import is_badge_material as is_badge_preview_material
 from ...material.definitions import TEXTURE_SLOTS
+from ...material.schema import is_texture_variable, shader_schema_for_material
+from ...material.service import resolve_dow2_data_path
 
 
 class DOW2_PT_material_textures(Panel):
@@ -22,10 +24,11 @@ class DOW2_PT_material_textures(Panel):
     def draw(self, context):
         layout = self.layout
         mat = context.object.active_material
-        shader_vars = mat.get("dow2_shader_vars", "").split(",") if mat.get("dow2_shader_vars") else []
+        schema = shader_schema_for_material(mat, resolve_dow2_data_path(context, ""))
+        schema_textures = {var.name for var in schema.variables if is_texture_variable(var)}
 
         for slot_name, label in TEXTURE_SLOTS:
-            enabled = not shader_vars or slot_name in shader_vars or not mat.get("dow2_shader")
+            enabled = not schema.variables or slot_name in schema_textures
 
             box = layout.box()
             box.enabled = enabled

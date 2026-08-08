@@ -2,6 +2,8 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Set
 
 import bpy
 
+from ..material.schema import schema_material_variables
+
 if TYPE_CHECKING:
     from .exporter import DoW2ModelExporter
 
@@ -60,17 +62,14 @@ def export_single_material(exporter: "DoW2ModelExporter", mat: bpy.types.Materia
     exporter.writer.write_long(len(shader_name))
     exporter.writer.write_str(shader_name)
 
-    for key in mat.keys():
-        if key.startswith("dow2_") and key not in ["dow2_shader", "dow2_shader_path"]:
-            var_name = key[5:]
-            value = mat[key]
-            exporter._export_material_variable(var_name, value, archive_path)
+    for var in schema_material_variables(mat, exporter.data_path):
+        exporter._export_material_variable(var.name, var.value, archive_path, var.var_type)
 
     exporter.writer.update_chunk_size(mtrl_header_pos, mtrl_data_pos)
     print(f"Exported '{mat.name}' material")
 
 
-def export_material_variable(exporter: "DoW2ModelExporter", var_name: str, value, archive_path: str):
+def export_material_variable(exporter: "DoW2ModelExporter", var_name: str, value, archive_path: str, var_type=None):
     """Export a material variable matching MaxScript variable export."""
     var_header_pos = exporter.writer.file.tell()
     var_data_pos = exporter.writer.write_chunk_header("DATA", "XVAR", 1, 0, "Material Variable", -1)
@@ -83,47 +82,48 @@ def export_material_variable(exporter: "DoW2ModelExporter", var_name: str, value
     exporter.writer.write_long(len(var_name))
     exporter.writer.write_str(var_name)
 
-    if isinstance(value, bool):
+    if var_type == 10 or (var_type is None and isinstance(value, bool)):
         exporter.writer.write_long(10)
         exporter.writer.write_long(1)
         exporter.writer.write_byte(1 if value else 0)
-    elif isinstance(value, int):
+    elif var_type == 0 or (var_type is None and isinstance(value, int)):
         exporter.writer.write_long(0)
         exporter.writer.write_long(4)
-        exporter.writer.write_long(value, unsigned=False)
-    elif isinstance(value, float):
+        exporter.writer.write_long(int(value), unsigned=False)
+    elif var_type == 1 or (var_type is None and isinstance(value, float)):
         exporter.writer.write_long(1)
         exporter.writer.write_long(4)
-        exporter.writer.write_float(value)
-    elif isinstance(value, str):
-        if value.startswith(archive_path):
-            rel_path = value[len(archive_path):].lstrip("\\/")
+        exporter.writer.write_float(float(value))
+    elif var_type == 9 or (var_type is None and isinstance(value, str)):
+        tex_path = str(value or "")
+        if tex_path.startswith(archive_path):
+            rel_path = tex_path[len(archive_path):].lstrip("\\/")
         else:
-            rel_path = value
+            rel_path = tex_path
         if rel_path.lower().endswith(".dds"):
             rel_path = rel_path[:-4]
         exporter.writer.write_long(9)
         exporter.writer.write_long(len(rel_path) + 1)
         exporter.writer.write_str(rel_path)
         exporter.writer.write_byte(0)
-    elif hasattr(value, "__len__"):
+    elif var_type in {3, 4, 5, 8} or (var_type is None and hasattr(value, "__len__")):
         arr = list(value)
-        if len(arr) == 2:
+        if var_type == 3 or (var_type is None and len(arr) == 2):
             exporter.writer.write_long(3)
             exporter.writer.write_long(8)
             for item in arr:
                 exporter.writer.write_float(float(item))
-        elif len(arr) == 3:
+        elif var_type == 4 or (var_type is None and len(arr) == 3):
             exporter.writer.write_long(4)
             exporter.writer.write_long(12)
             for item in arr:
                 exporter.writer.write_float(float(item))
-        elif len(arr) == 4:
+        elif var_type == 5 or (var_type is None and len(arr) == 4):
             exporter.writer.write_long(5)
             exporter.writer.write_long(16)
             for item in arr:
                 exporter.writer.write_float(float(item))
-        elif len(arr) == 16:
+        elif var_type == 8 or (var_type is None and len(arr) == 16):
             exporter.writer.write_long(8)
             exporter.writer.write_long(64)
             for item in arr:

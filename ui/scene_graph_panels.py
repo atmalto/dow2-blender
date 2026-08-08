@@ -7,7 +7,7 @@ from bpy_extras.io_utils import ImportHelper
 from bpy.types import Operator, Panel
 
 from ..map_io.importer import MapImportOptions, import_scenario_map
-from ..utils import clear_scene
+from ..utils import clear_scene, set_file_browser_start
 
 
 _SCENE_GRAPH_HELPERS = None
@@ -168,6 +168,11 @@ class DOW2_OT_scene_graph_pick_map_path(Operator, ImportHelper):
 
     filename_ext = ".scenario"
     filter_glob: StringProperty(default="*.scenario", options={'HIDDEN'})
+
+    def invoke(self, context, event):
+        set_file_browser_start(self, context)
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
 
     def execute(self, context):
         context.scene.dow2_map_import_path = self.filepath
