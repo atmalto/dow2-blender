@@ -40,6 +40,7 @@ blender_hkx/legacy/
 ragdoll/working/ragdoll_workspace/
 ragdoll/working/
 ragdoll/research/
+ragdoll/*.md
 
 # temp working files to ignore: physics
 destruction_physics/
