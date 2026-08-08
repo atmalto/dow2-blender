@@ -1,3 +1,5 @@
+import os
+
 import bpy
 
 from ..utils import load_persisted_settings, store_persisted_settings
@@ -169,7 +171,8 @@ class DOW2_OT_import_model(bpy.types.Operator):
         result = importer.import_model()
 
         if self.save_scene and result == {"FINISHED"}:
-            pass
+            blend_path = os.path.splitext(self.filepath)[0] + ".blend"
+            bpy.ops.wm.save_as_mainfile(filepath=blend_path)
 
         return result
 

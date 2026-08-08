@@ -90,7 +90,7 @@ class ExportOptions:
     export_health_var: bool = True
     export_simbox: bool = False
     export_coverbox: bool = False
-    export_existing_bvols: bool = False
+    # export_existing_bvols: bool = False
 
 
 DAMAGE_STATE_ITEMS = [
@@ -125,7 +125,7 @@ def export_options_from_dict(options_dict: dict) -> ExportOptions:
         export_health_var=options_dict.get("export_health_var", True),
         export_simbox=options_dict.get("export_simbox", False),
         export_coverbox=options_dict.get("export_coverbox", False),
-        export_existing_bvols=options_dict.get("export_existing_bvols", False),
+        # export_existing_bvols=options_dict.get("export_existing_bvols", False),
     )
 
 

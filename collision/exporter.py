@@ -166,9 +166,11 @@ def menu_func_export(self, context):
 
 def register():
     bpy.utils.register_class(DOW2_OT_export_collision)
-    bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
 
 def unregister():
-    bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+    try:
+        bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+    except (RuntimeError, ValueError):
+        pass
     bpy.utils.unregister_class(DOW2_OT_export_collision)

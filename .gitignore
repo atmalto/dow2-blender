@@ -16,8 +16,12 @@ logs/
 # ignore Havok sdk folders
 havok_sdk_*/
 
-# ignore dev/test dir (fully ignored until a proper test suite is written)
-tests/
+# Test suite local/generated files. Keep tests/framework and tests/suites tracked.
+tests/config.toml
+tests/readme.md
+tests/output/
+tests/legacy/
+tests/test_data/
 working/SantosTools/outdated/
 
 # Santos Max Scripts
@@ -40,7 +44,6 @@ ragdoll/research/
 # temp working files to ignore: physics
 destruction_physics/
 destruction_physics/
-# Compiled binaries — shipped only in the release package, never in git history
 *.exe
 *.dll
 *.lib

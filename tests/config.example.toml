@@ -1,0 +1,47 @@
+#
+# Copy this file to `config.toml` (same folder) and adjust the paths for your
+# machine. `config.toml` is git-ignored; this template is tracked.
+
+[paths]
+# Blender installation root (the folder that contains blender.exe). Used by
+# run.py to relaunch the suite headless when it is started with a plain Python.
+blender = "C:/Program Files/Blender Foundation/Blender 4.3"
+
+# Extracted DoW2 mod Data folder (the "/data" root that .model textures are
+# resolved relative to). Tests that need game assets are SKIPPED (not failed)
+# when this path is missing.
+data_root = "C:/Program Files (x86)/Steam/steamapps/common/Dawn of War II - Retribution/testMod/Data"
+
+[run]
+# Scratch dir for generated .model / temporarily-staged textures. Everything
+# written here is cleaned up per test. Relative paths resolve against tests/.
+scratch_dir = "output/scratch"
+
+# Where result logs (unchecked.log, failures.log, by_category/*.log) are written.
+log_dir = "output/logs"
+
+# Continue running remaining tests after a failure instead of stopping.
+continue_on_error = true
+
+[test_data]
+# Permanent, small, checked-in test data (rigged/textured .glb + material config +
+# textures) created by importing real .model assets once. See tests/test_data/.
+dir = "test_data"
+
+[scope]
+# Selected when --scope is not passed on the command line.
+default = "small"
+
+# Per-scope asset caps. Animations are slow (native Havok round-trip) so their
+# caps are much smaller. Tune freely.
+[scope.presets.small]
+models = 100
+animations = 5
+
+[scope.presets.medium]
+models = 300
+animations = 10
+
+[scope.presets.large]
+models = 500
+animations = 20

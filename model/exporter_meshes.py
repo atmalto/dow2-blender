@@ -4,6 +4,7 @@ import bpy
 from mathutils import Vector
 
 from ..utils import blender_to_dx_matrix, pack_vector
+from . import utils as model_utils
 from .export_utils import ExportSkinBone, ExportSubMesh, ExportValidationError, ExportVertex, blender_to_dx_normal, blender_to_dx_position, weights_to_bytes
 from .skeleton_space import remove_bone_axis_adapter
 from .exporter_mesh_plan import (
@@ -73,6 +74,8 @@ def collect_mesh_groups(
 
     for obj in bpy.data.objects:
         if obj.type != "MESH":
+            continue
+        if model_utils.is_bounding_box_object(obj) or obj.name.startswith("BVOL_"):
             continue
 
         group_name = None
@@ -281,6 +284,8 @@ def _process_mesh_data(
                                 weights.append((skin_bone_indices[vertex_group.name], group.weight))
 
                         weights.sort(key=lambda item: item[1], reverse=True)
+                        if len(weights) > 4:
+                            _warn_vertex_influence_limit(exporter, obj.name, vertex.index, len(weights))
                         weights = weights[:4]
 
                         total = sum(weight for _, weight in weights)
@@ -315,6 +320,19 @@ def _process_mesh_data(
                 result.append(sub_mesh)
 
     return result
+
+
+def _warn_vertex_influence_limit(exporter: "DoW2ModelExporter", obj_name: str, vertex_index: int, influence_count: int) -> None:
+    key = f"vertex_influence_limit:{obj_name}"
+    if key in getattr(exporter, "_warning_keys", set()):
+        return
+    exporter._warning_keys.add(key)
+    message = (
+        f"{obj_name}: vertex {vertex_index} has {influence_count} bone influences; "
+        "Dawn of War II supports at most 4 per vertex, exporting the strongest 4"
+    )
+    getattr(exporter, "warnings", []).append(message)
+    print(f"[WARNING] {message}")
 
 
 def _find_armature(obj: bpy.types.Object) -> Optional[bpy.types.Object]:
@@ -835,16 +853,16 @@ def export_bounding_volumes(exporter: "DoW2ModelExporter", sub_mesh: ExportSubMe
     When export_existing_bvols is enabled, reads position/scale from
     BVOL_ wire-cube objects instead of recomputing from mesh vertices.
     """
-    if exporter.options.export_existing_bvols:
-        mesh_min, mesh_max, bone_bounds = _collect_existing_bvols(exporter, sub_mesh)
-        if mesh_min is not None:
-            exporter._write_bounding_volume(mesh_min, mesh_max)
-            for bone in sub_mesh.skin_bones:
-                bmin, bmax = bone_bounds.get(bone.name, (None, None))
-                if bmin is None:
-                    bmin, bmax = bone.minimum, bone.maximum
-                exporter._write_bounding_volume(bmin, bmax)
-            return
+    # if exporter.options.export_existing_bvols:
+    #     mesh_min, mesh_max, bone_bounds = _collect_existing_bvols(exporter, sub_mesh)
+    #     if mesh_min is not None:
+    #         exporter._write_bounding_volume(mesh_min, mesh_max)
+    #         for bone in sub_mesh.skin_bones:
+    #             bmin, bmax = bone_bounds.get(bone.name, (None, None))
+    #             if bmin is None:
+    #                 bmin, bmax = bone.minimum, bone.maximum
+    #             exporter._write_bounding_volume(bmin, bmax)
+    #         return
 
     exporter._write_bounding_volume(sub_mesh.minimum, sub_mesh.maximum)
 

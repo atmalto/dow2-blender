@@ -190,9 +190,11 @@ def menu_func_import(self, context):
 
 def register():
     bpy.utils.register_class(DOW2_OT_import_collision)
-    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 
 def unregister():
-    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    try:
+        bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
+    except (RuntimeError, ValueError):
+        pass
     bpy.utils.unregister_class(DOW2_OT_import_collision)

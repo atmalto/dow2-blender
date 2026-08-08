@@ -194,6 +194,9 @@ class DoW2AnimationImporter:
         mapping = build_import_bone_mapping(anim.bones, armature, selected_bone_names=selected_bone_names)
         bone_mapping = mapping.bone_mapping
         missing_bones = mapping.missing_bones
+        tracked_indices = set(anim.tracks) if anim.tracks else set(range(num_bones))
+        tracked_bones = [anim.bones[index] for index in anim.tracks if 0 <= index < len(anim.bones)]
+        mapped_tracked_indices = tracked_indices.intersection(bone_mapping.keys())
 
         self.log_missing_bones(anim.name or action_name, armature.name, missing_bones)
 
@@ -208,7 +211,24 @@ class DoW2AnimationImporter:
                 failure_reason=failure_reason,
                 missing_bones=missing_bones,
                 referenced_bones=list(anim.bones),
-                tracked_bones=[anim.bones[index] for index in anim.tracks if 0 <= index < len(anim.bones)],
+                tracked_bones=tracked_bones,
+                mapped_bone_count=0,
+                total_bone_count=num_bones,
+                frame_count=num_frames,
+            )
+
+        if not mapped_tracked_indices:
+            if selected_bone_names:
+                failure_reason = "None of the selected bones are tracked by this animation"
+            else:
+                failure_reason = "Animation tracked bones do not match the armature"
+            print(f"Failed to import animation '{anim.name or action_name}': {failure_reason}")
+            return AnimationImportResult(
+                success=False,
+                failure_reason=failure_reason,
+                missing_bones=missing_bones,
+                referenced_bones=list(anim.bones),
+                tracked_bones=tracked_bones,
                 mapped_bone_count=0,
                 total_bone_count=num_bones,
                 frame_count=num_frames,
@@ -236,6 +256,8 @@ class DoW2AnimationImporter:
 
             for bone_idx, world_matrix in enumerate(frame_data):
                 if bone_idx not in bone_mapping:
+                    continue
+                if bone_idx not in tracked_indices:
                     continue
 
                 pose_bone = bone_mapping[bone_idx]
@@ -273,15 +295,14 @@ class DoW2AnimationImporter:
             bpy.ops.object.mode_set(mode=original_mode)
 
         print(
-            f"Imported animation '{anim.name}': {num_frames} frames, {len(bone_mapping)}/{num_bones} bones mapped, {len(missing_bones)} bone(s) skipped"
+            f"Imported animation '{anim.name}': {num_frames} frames, {len(mapped_tracked_indices)}/{len(tracked_indices)} tracked bones mapped, {len(missing_bones)} bone(s) skipped"
         )
-        tracked_bones = [anim.bones[index] for index in anim.tracks if 0 <= index < len(anim.bones)]
         return AnimationImportResult(
             success=True,
             missing_bones=missing_bones,
             referenced_bones=list(anim.bones),
             tracked_bones=tracked_bones,
-            mapped_bone_count=len(bone_mapping),
+            mapped_bone_count=len(mapped_tracked_indices),
             total_bone_count=num_bones,
             frame_count=num_frames,
         )

@@ -88,6 +88,7 @@ class RelicMaterialCreator:
 
         file_path = self.find_texture_file(tex_path)
         if not file_path:
+            print(f"[WARNING] Missing texture file: {tex_path}")
             return None
 
         try:

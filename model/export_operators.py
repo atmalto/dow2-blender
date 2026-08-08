@@ -46,7 +46,7 @@ def _build_export_options_payload(operator) -> dict:
         "export_health_var": operator.export_health_var,
         "export_simbox": operator.export_simbox,
         "export_coverbox": operator.export_coverbox,
-        "export_existing_bvols": operator.export_existing_bvols,
+        # "export_existing_bvols": operator.export_existing_bvols,
     }
 
 
@@ -57,7 +57,15 @@ def _run_export(filepath: str, options_dict: dict):
 
 def _run_export_with_reporting(operator, filepath: str, options_dict: dict):
     try:
-        return _run_export(filepath, options_dict)
+        exporter = _get_exporter_class()(filepath, export_options_from_dict(options_dict))
+        result = exporter.export_model()
+        warnings = getattr(exporter, "warnings", [])
+        if warnings:
+            preview = "; ".join(warnings[:3])
+            if len(warnings) > 3:
+                preview += f"; ... {len(warnings) - 3} more"
+            operator.report({'WARNING'}, preview)
+        return result
     except ExportValidationError as exc:
         operator.report({'ERROR'}, str(exc))
         return {'CANCELLED'}
@@ -179,12 +187,12 @@ class DOW2_OT_export_model(bpy.types.Operator):
         default=False,
         update=_persist_model_export_settings_update,
     )
-    export_existing_bvols: bpy.props.BoolProperty(
-        name="Export Existing BVOLs",
-        description="Export imported BVOL_ bounding volume objects instead of recomputing from mesh vertices",
-        default=False,
-        update=_persist_model_export_settings_update,
-    )
+    # export_existing_bvols: bpy.props.BoolProperty(
+    #     name="Export Existing BVOLs",
+    #     description="Export imported BVOL_ bounding volume objects instead of recomputing from mesh vertices",
+    #     default=False,
+    #     update=_persist_model_export_settings_update,
+    # )
     check_existing: bpy.props.BoolProperty(
         name="Check Existing",
         description="Check and warn on overwriting existing files",
@@ -194,6 +202,10 @@ class DOW2_OT_export_model(bpy.types.Operator):
 
     def execute(self, context):
         _store_persisted_model_export_settings(self, context)
+
+        if self.check_existing and self.filepath and os.path.exists(self.filepath):
+            self.report({'WARNING'}, f"File already exists: {self.filepath}")
+            return {'CANCELLED'}
 
         if self.apply_material_if_missing:
             assigned_count = assign_default_materials_to_missing_slots(unique_per_mesh=True)
@@ -282,12 +294,12 @@ class DOW2_OT_export_model(bpy.types.Operator):
         row_cover.prop(self, "export_coverbox")
         row_cover.enabled = coverbox is not None and coverbox.type in {'EMPTY', 'MESH'}
 
-        bvol_count = len([o for o in bpy.data.objects if o.name.startswith("BVOL_")])
-        row_bvol = col2.row()
-        row_bvol.prop(self, "export_existing_bvols")
-        if bvol_count == 0:
-            row_bvol.enabled = False
-            row_bvol.label(text="(no BVOL_ objects in scene)")
+        # bvol_count = len([o for o in bpy.data.objects if o.name.startswith("BVOL_")])
+        # row_bvol = col2.row()
+        # row_bvol.prop(self, "export_existing_bvols")
+        # if bvol_count == 0:
+        #     row_bvol.enabled = False
+        #     row_bvol.label(text="(no BVOL_ objects in scene)")
 
         box = layout.box()
         box.label(text="Export Options")

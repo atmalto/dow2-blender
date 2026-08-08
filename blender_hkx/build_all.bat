@@ -17,8 +17,8 @@ set "LIB=%VCINSTALLDIR%\lib;C:\Program Files\Microsoft SDKs\Windows\v6.0A\Lib;%L
 
 if defined HAVOK_SDK_ROOT (
 	set "HAVOK_SDK=%HAVOK_SDK_ROOT%"
-) else if exist "C:\Users\Moham\Desktop\Reverse Engineering\DoW2_Mod_tools\dow2_tools_working\working\havok_sdk_5_5_x\Source" (
-	set "HAVOK_SDK=C:\Users\Moham\Desktop\Reverse Engineering\DoW2_Mod_tools\dow2_tools_working\working\havok_sdk_5_5_x"
+) else if exist "C:\Users\<user>\Desktop\Reverse Engineering\DoW2_Mod_tools\dow2_tools_working\working\havok_sdk_5_5_x\Source" (
+	set "HAVOK_SDK=C:\Users\<user>\Desktop\Reverse Engineering\DoW2_Mod_tools\dow2_tools_working\working\havok_sdk_5_5_x"
 ) else (
 	set "HAVOK_SDK=%SCRIPT_DIR%..\working\havok_sdk_5_5_x"
 )

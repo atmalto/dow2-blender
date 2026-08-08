@@ -66,6 +66,8 @@ class DoW2ModelExporter:
         self.data_path = os.path.dirname(filepath)
         self.bones: List[bpy.types.Object] = []
         self.bone_names: List[str] = []
+        self.warnings: List[str] = []
+        self._warning_keys = set()
 
     def export_model(self):
         print(f"Exporting: {self.filepath}")
