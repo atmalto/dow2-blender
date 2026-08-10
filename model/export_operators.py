@@ -196,7 +196,7 @@ class DOW2_OT_export_model(bpy.types.Operator):
     check_existing: bpy.props.BoolProperty(
         name="Check Existing",
         description="Check and warn on overwriting existing files",
-        default=True,
+        default=False,
         options={'HIDDEN'},
     )
 

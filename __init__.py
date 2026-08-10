@@ -3,11 +3,11 @@
 # ===========
 bl_info = {
     "name": "DoW2 Tools",
-    "author": "Converted from Santos Tools 2",
-    "version": (0, 1, 1),
+    "author": "Santos Tools 2, Clocktickin",
+    "version": (0, 1, 3),
     "blender": (4, 3, 0),
-    "location": "File > Import/Export, View3D > Sidebar > DoW2",
-    "description": "Import and export Dawn of War 2 model files (.model)",
+    "location": "N-panel Sidebar > DoW2",
+    "description": "Import and export Dawn of War 2 asset files.",
     "category": "Import-Export",
 }
 

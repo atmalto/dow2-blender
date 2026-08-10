@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from mathutils import Matrix, Vector
 from typing import List, Optional, Tuple
 
+from . import utils as model_utils
+
 
 def blender_to_dx_position(pos: Vector) -> Tuple[float, float, float]:
     """Convert position: Blender to DirectX."""
@@ -173,6 +175,8 @@ def assign_default_materials_to_missing_slots(unique_per_mesh: bool = False) -> 
     for obj in bpy.data.objects:
         if obj.type != 'MESH':
             continue
+        if model_utils.is_bounding_box_object(obj) or obj.name.startswith("BVOL_"):
+            continue
 
         if not obj.data.materials or len(obj.data.materials) == 0:
             mat = get_or_create_unique_default_material(obj.name, 0) if unique_per_mesh else default_mat
@@ -197,6 +201,8 @@ def validate_materials_for_export() -> Tuple[List[str], List[bpy.types.Object]]:
 
     for obj in bpy.data.objects:
         if obj.type != 'MESH':
+            continue
+        if model_utils.is_bounding_box_object(obj) or obj.name.startswith("BVOL_"):
             continue
 
         if not obj.data.materials or len(obj.data.materials) == 0:

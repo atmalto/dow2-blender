@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Iterable, List, Optional, Set
 import bpy
 
 from ..material.schema import schema_material_variables
+from . import utils as model_utils
 
 if TYPE_CHECKING:
     from .exporter import DoW2ModelExporter
@@ -15,6 +16,8 @@ def collect_materials(material_names: Optional[Iterable[str]] = None) -> List[bp
 
     for obj in bpy.data.objects:
         if obj.type != "MESH":
+            continue
+        if model_utils.is_bounding_box_object(obj) or obj.name.startswith("BVOL_"):
             continue
         for slot in obj.material_slots:
             material = slot.material

@@ -164,6 +164,7 @@ def test_bone_limit_and_material_combine(ctx):
     from dow2_tools.model.exporter import DoW2ModelExporter  # type: ignore
     from dow2_tools.model.export_utils import ExportSubMesh, get_or_create_default_material, is_relic_material  # type: ignore
     from dow2_tools.model.export_utils import ExportOptions  # type: ignore
+    from dow2_tools.model.export_utils import assign_default_materials_to_missing_slots, validate_materials_for_export  # type: ignore
     from dow2_tools.model.exporter_mesh_plan import (  # type: ignore
         MAX_INFLUENCING_BONES_PER_MESH,
         PlannedTriangle,
@@ -171,7 +172,7 @@ def test_bone_limit_and_material_combine(ctx):
         count_sub_mesh_influencing_bones,
         partition_triangles_by_bone_limit,
     )
-    from dow2_tools.model.export_utils import assign_default_materials_to_missing_slots  # type: ignore
+    from dow2_tools.model.exporter_materials import collect_materials  # type: ignore
     from framework import blender_env
 
     problems: list[str] = []
@@ -210,6 +211,37 @@ def test_bone_limit_and_material_combine(ctx):
         problems.append("apply_material_if_missing did not assign unique default materials")
     if any(not is_relic_material(obj.data.materials[0]) for obj in (first_obj, second_obj) if obj.data.materials):
         problems.append("apply_material_if_missing assigned a non-relic material")
+
+    blender_env.reset_scene()
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.0))
+    main_obj = bpy.context.active_object
+    main_obj.name = "main_export_mesh"
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(2.0, 0.0, 0.0))
+    simbox_obj = bpy.context.active_object
+    simbox_obj.name = "SIMBOX"
+
+    helper_mat = bpy.data.materials.new("helper.preview.material")
+    simbox_obj.data.materials.append(helper_mat)
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(4.0, 0.0, 0.0))
+    bvol_obj = bpy.context.active_object
+    bvol_obj.name = "BVOL_probe"
+
+    assigned = assign_default_materials_to_missing_slots(unique_per_mesh=True)
+    if assigned != 1:
+        problems.append(f"helper meshes were not skipped by default-material assignment: assigned {assigned}, expected 1")
+
+    warnings, flagged = validate_materials_for_export()
+    if warnings:
+        problems.append(f"helper meshes were not skipped by material validation: {warnings}")
+    if flagged:
+        problems.append(f"helper meshes were not skipped by material validation flagged set: {[obj.name for obj in flagged]}")
+
+    collected = collect_materials()
+    collected_names = {mat.name for mat in collected}
+    if len(collected_names) != 1 or helper_mat.name in collected_names:
+        problems.append(f"helper meshes were not skipped by material collection: {sorted(collected_names)}")
 
     get_or_create_default_material()
 
