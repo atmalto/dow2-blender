@@ -1,6 +1,12 @@
 # DoW2 Tools Blender Add-on
 
-DoW2 Tools is a Blender add-on for working with Dawn of War II assets. It is built around the add-on panels in Blender's N-panel, and that is the intended way to use it.
+DoW2 Tools is a Blender add-on for working with Dawn of War II assets. It is built around the add-on panels in Blender's N-panel.
+
+Download from releases on GitHub https://github.com/atmalto/dow2-blender/releases 
+
+Download from ModDB:
+
+<a href="https://www.moddb.com/games/dawn-of-war-ii-retribution/downloads/dow-2-blender-tools" title="Download DoW 2 Blender Tools - ModDB" target="_blank"><img src="https://button.moddb.com/download/medium/314341.png" alt="DoW 2 Blender Tools" /></a>
 
 ## Setup
 
