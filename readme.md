@@ -26,6 +26,14 @@ This should create a `dow2_tools` folder inside `addons_core`. Restart Blender a
 
 Do not use Blender's normal add-on installer for this release layout. Unpack the folder directly into `addons_core` instead.
 
+**Note on binaries used**
+
+The add-on uses an exe and a dll in the background for animation/physics/ragdoll import/export, their source code and build script can be found under [/blender_hkx/src ](https://github.com/atmalto/dow2-blender/tree/main/blender_hkx/src) , [/blender_hkx/build_all.sh ](https://github.com/atmalto/dow2-blender/blob/main/blender_hkx/build_all.sh).
+
+- _Antivirus_ : You may use your antivirus software to scan and flag the add on.
+- _Self-build .exe / .dll_  : If there are concerns, you'd be able to build your .exe / .dll files, as long as you have the accompanying havok sdk and compatible MSVC versions. Contact sonofwilkin1337@gmail.com for assistance on this.
+- _AI Tools _: Ask AI to scan the binaries against the source code and match ( give the .dll + .exe + a zip of [/blender_hkx/src ](https://github.com/atmalto/dow2-blender/tree/main/blender_hkx/src)  and get an AI model like claude or codex to validate)
+
 ## What this add-on does
 1. DoW2 `.model` import/export including meshes, materials, bones, and bounding volumes.
 2. DoW2 `.hkx` import/export for animations, physics, and ragdolls.
