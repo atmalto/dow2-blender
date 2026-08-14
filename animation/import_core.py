@@ -29,6 +29,7 @@ class AnimationData:
     name: str = ""
     duration_seconds: float = 0.0
     bones: List[str] = field(default_factory=list)
+    parent_indices: List[int] = field(default_factory=list)
     pose: List[Matrix] = field(default_factory=list)
     tracks: List[int] = field(default_factory=list)
     frames: List[List[Matrix]] = field(default_factory=list)
@@ -191,7 +192,12 @@ class DoW2AnimationImporter:
         scene.frame_current = 0
 
         action_name = anim.name if anim.name else "DoW2_Animation"
-        mapping = build_import_bone_mapping(anim.bones, armature, selected_bone_names=selected_bone_names)
+        mapping = build_import_bone_mapping(
+            anim.bones,
+            armature,
+            parent_indices=anim.parent_indices,
+            selected_bone_names=selected_bone_names,
+        )
         bone_mapping = mapping.bone_mapping
         missing_bones = mapping.missing_bones
         tracked_indices = set(anim.tracks) if anim.tracks else set(range(num_bones))

@@ -59,6 +59,68 @@ def test_import_hkx(ctx):
             ctx.fail(f"{hkx_path.name}: keyed bones missing from .tracks: {sorted(missing_from_tracks)[:10]}")
 
 
+def test_import_sparse_hierarchy_parent_indices(ctx):
+    """A-I2b: sparse HKX parent_indices preserve omitted neck/clavicle chains."""
+    import math
+
+    import bpy  # type: ignore
+
+    from dow2_tools.animation.import_core import AnimationData, DoW2AnimationImporter  # type: ignore
+    from dow2_tools.animation.import_utils import get_armature_space_pose_matrix  # type: ignore
+    from dow2_tools.model.skeleton_space import remove_bone_axis_adapter  # type: ignore
+    from framework import animation_import as anim_helpers
+
+    ctx.require_data()
+    armature = anim_helpers.load_space_marine_model(ctx)
+
+    bones_by_lower = {bone.name.lower(): bone for bone in armature.data.bones}
+    required_names = [
+        "bip01",
+        "bip01 spine3",
+        "bip01 head",
+        "bip01 jaw",
+        "bip01 l upperarm",
+        "bip01 l forearm",
+        "bip01 l hand",
+    ]
+    missing_required = [name for name in required_names if name not in bones_by_lower]
+    if missing_required:
+        ctx.skip(f"space_marine.model missing sparse-hierarchy test bones: {missing_required[0]}")
+
+    bone_names = [bones_by_lower[name].name for name in required_names]
+    world_matrices = [remove_bone_axis_adapter(bones_by_lower[name].matrix_local, armature) for name in required_names]
+
+    anim = AnimationData(
+        name="sparse_parent_indices_probe",
+        bones=bone_names,
+        parent_indices=[-1, 0, 1, 2, 1, 4, 5],
+        pose=[matrix.copy() for matrix in world_matrices],
+        tracks=list(range(len(bone_names))),
+        frames=[[matrix.copy() for matrix in world_matrices]],
+    )
+
+    importer = DoW2AnimationImporter(bpy.context)
+    result = importer.import_animation(anim, armature)
+    if not result.success:
+        ctx.fail(f"sparse parent-index import failed: {result.failure_reason}")
+
+    bpy.context.scene.frame_set(0)
+    for index, bone_name in enumerate(bone_names):
+        pose_bone = armature.pose.bones.get(bone_name)
+        if pose_bone is None:
+            ctx.fail(f"pose bone missing after sparse import: {bone_name}")
+
+        actual_world = get_armature_space_pose_matrix(armature, pose_bone)
+        expected_world = world_matrices[index]
+        translation_error = (actual_world.to_translation() - expected_world.to_translation()).length
+        rotation_error = math.degrees(actual_world.to_quaternion().rotation_difference(expected_world.to_quaternion()).angle)
+        if translation_error > 1e-4 or rotation_error > 1e-3:
+            ctx.fail(
+                f"{bone_name}: sparse parent-index world mismatch after import "
+                f"(translation={translation_error:.6f}, rotation={rotation_error:.6f})"
+            )
+
+
 def test_import_selected_bones_only(ctx):
     """A-I3: import_selected_bones_only keys only selected bones."""
     import bpy  # type: ignore

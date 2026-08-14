@@ -10,6 +10,8 @@ from typing import Dict, List
 
 import bpy
 
+from .action_compat import action_has_fcurves, ensure_action_fcurve, iter_action_fcurves
+
 
 ALL_ANIMATIONS_BLEND_NAME = "all_animations.blend"
 
@@ -53,6 +55,7 @@ def _build_action_name(group_path: str) -> str:
 
 def _get_or_create_target_curve(
     target_action: bpy.types.Action,
+    target_datablock,
     target_curves: Dict[tuple[str, int], bpy.types.FCurve],
     source_fcurve: bpy.types.FCurve,
 ) -> bpy.types.FCurve:
@@ -61,10 +64,12 @@ def _get_or_create_target_curve(
     if target_curve is not None:
         return target_curve
 
-    target_curve = target_action.fcurves.new(
-        data_path=source_fcurve.data_path,
+    target_curve = ensure_action_fcurve(
+        target_action,
+        target_datablock,
+        source_fcurve.data_path,
         index=source_fcurve.array_index,
-        action_group=source_fcurve.group.name if source_fcurve.group else None,
+        group_name=source_fcurve.group.name if source_fcurve.group else "",
     )
     target_curve.auto_smoothing = source_fcurve.auto_smoothing
     target_curve.extrapolation = source_fcurve.extrapolation
@@ -77,6 +82,7 @@ def _get_or_create_target_curve(
 
 def _append_action_timeline(
     target_action: bpy.types.Action,
+    target_datablock,
     target_curves: Dict[tuple[str, int], bpy.types.FCurve],
     source_action: bpy.types.Action,
     timeline_end: float,
@@ -86,13 +92,13 @@ def _append_action_timeline(
     timeline_start = 0.0 if timeline_end < 0.0 else timeline_end + 1.0
     frame_offset = timeline_start - source_start
 
-    for source_fcurve in source_action.fcurves:
+    for source_fcurve in iter_action_fcurves(source_action):
         source_points = source_fcurve.keyframe_points
         point_count = len(source_points)
         if point_count == 0:
             continue
 
-        target_curve = _get_or_create_target_curve(target_action, target_curves, source_fcurve)
+        target_curve = _get_or_create_target_curve(target_action, target_datablock, target_curves, source_fcurve)
         start_index = len(target_curve.keyframe_points)
         target_curve.keyframe_points.add(point_count)
 
@@ -194,9 +200,13 @@ def run_all_animations_worker(manifest_path: str) -> int:
             timeline_end = -1.0
             base_action = armature.animation_data.action if armature.animation_data else None
             try:
+                if armature.animation_data is None:
+                    armature.animation_data_create()
+                armature.animation_data.action = combined_action
+
                 if base_action is not None:
                     print(f"[all_animations] appending base action '{base_action.name}'")
-                    timeline_end = _append_action_timeline(combined_action, target_curves, base_action, timeline_end)
+                    timeline_end = _append_action_timeline(combined_action, armature, target_curves, base_action, timeline_end)
                 else:
                     result.failed_animation_names.setdefault(group_path, []).append(refs_payload[0]["action_name"])
 
@@ -206,14 +216,12 @@ def run_all_animations_worker(manifest_path: str) -> int:
                     if source_action is None:
                         result.failed_animation_names.setdefault(group_path, []).append(ref_payload["action_name"])
                         continue
-                    timeline_end = _append_action_timeline(combined_action, target_curves, source_action, timeline_end)
+                    timeline_end = _append_action_timeline(combined_action, armature, target_curves, source_action, timeline_end)
                     discard_cached_action(source_action)
 
-                if not combined_action.fcurves:
+                if not action_has_fcurves(combined_action):
                     continue
 
-                if armature.animation_data is None:
-                    armature.animation_data_create()
                 armature.animation_data.action = combined_action
                 bpy.context.scene.frame_start = 0
                 bpy.context.scene.frame_end = max(0, int(math.ceil(timeline_end)))

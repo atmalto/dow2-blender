@@ -5,6 +5,7 @@ from bpy.app.handlers import persistent
 from bpy.props import BoolProperty, CollectionProperty, StringProperty
 from bpy.types import Operator, Panel, PropertyGroup
 
+from ..animation.action_compat import count_action_fcurves
 from ..utils import get_addon_preferences, set_file_browser_start
 from ..animation.hkanim import (
     HkAnimToolError,
@@ -380,7 +381,7 @@ class DOW2_PT_animation_panel(Panel):
                 box = layout.box()
                 box.label(text=f"Action: {action.name}")
                 box.label(text=f"Range: {int(action.frame_range[0])} - {int(action.frame_range[1])}")
-                box.label(text=f"FCurves: {len(action.fcurves)}")
+                box.label(text=f"FCurves: {count_action_fcurves(action)}")
 
 
 ANIMATION_PANEL_CLASSES = [

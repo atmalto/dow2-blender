@@ -3,6 +3,7 @@ import os
 
 import bpy
 
+from .action_compat import iter_action_fcurves
 
 CSV_HEADER = ("bone_name", "rig", "track")
 
@@ -51,7 +52,7 @@ def get_action_track_bone_names(action):
         return []
 
     track_names = []
-    for fcurve in action.fcurves:
+    for fcurve in iter_action_fcurves(action):
         data_path = fcurve.data_path or ""
         if not data_path.startswith('pose.bones["'):
             continue

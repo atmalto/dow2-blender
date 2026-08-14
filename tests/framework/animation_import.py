@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from dow2_tools.animation.action_compat import iter_action_fcurves  # type: ignore
+
 SPACE_MARINE_REL = Path("art/race_marine/troops/space_marine")
 DEFAULT_HKX_REL = Path("animations/range_missile_launcher/fb_idle_stand_01.hkx")
 BATCH_HKX_RELS = (
@@ -100,7 +102,7 @@ def keyed_pose_bones(action) -> set[str]:
     keyed: set[str] = set()
     if action is None:
         return keyed
-    for fcurve in action.fcurves:
+    for fcurve in iter_action_fcurves(action):
         data_path = fcurve.data_path or ""
         if not data_path.startswith('pose.bones["'):
             continue

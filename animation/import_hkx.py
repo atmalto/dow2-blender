@@ -115,6 +115,7 @@ def _parse_hkx_animation_json(filepath: str, payload: dict, armature=None) -> An
     animation.name = payload.get("animation_name") or os.path.splitext(os.path.basename(filepath))[0]
     animation.duration_seconds = float(payload.get("duration", 0.0) or 0.0)
     animation.bones = bone_names
+    animation.parent_indices = parent_indices
     animation.pose = reference_world_matrices
     animation.tracks = track_bone_indices
 

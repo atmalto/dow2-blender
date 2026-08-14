@@ -322,9 +322,11 @@ class DOW2_OT_batch_import_anims(bpy.types.Operator):
                 if armature_obj and not bones_validated:
                     bones_validated = True
                     if armature_obj.animation_data and armature_obj.animation_data.action:
+                        from .action_compat import iter_action_fcurves
+
                         action = armature_obj.animation_data.action
                         anim_bones = set()
-                        for fcurve in action.fcurves:
+                        for fcurve in iter_action_fcurves(action):
                             if fcurve.data_path.startswith('pose.bones["'):
                                 bone_name = fcurve.data_path.split('"')[1]
                                 anim_bones.add(bone_name)

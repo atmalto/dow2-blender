@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import bpy
 from mathutils import Matrix
 
+from .action_compat import iter_action_fcurves, remove_action_fcurve
 from ..model.skeleton_space import remove_bone_axis_adapter
 
 
@@ -60,12 +61,17 @@ def resolve_batch_relative_animation_path(anim_path: str, input_directory: str, 
     return os.path.relpath(normalized_anim_path, normalized_input)
 
 
-def get_rest_local_matrix(pose_bone: bpy.types.PoseBone) -> Matrix:
-    """Return a bone's rest transform relative to its parent rest transform."""
+def get_rest_local_matrix(
+    pose_bone: bpy.types.PoseBone,
+    parent_pose_bone: Optional[bpy.types.PoseBone] = None,
+) -> Matrix:
+    """Return a bone's rest transform relative to its direct or sparse parent rest transform."""
     rest_world = remove_bone_axis_adapter(pose_bone.bone.matrix_local, pose_bone.id_data)
     rest_local = rest_world
-    if pose_bone.parent:
-        parent_rest_world = remove_bone_axis_adapter(pose_bone.parent.bone.matrix_local, pose_bone.id_data)
+    if parent_pose_bone is None:
+        parent_pose_bone = pose_bone.parent
+    if parent_pose_bone:
+        parent_rest_world = remove_bone_axis_adapter(parent_pose_bone.bone.matrix_local, pose_bone.id_data)
         rest_local = parent_rest_world.inverted() @ rest_world
     return rest_local
 
@@ -78,6 +84,7 @@ def get_armature_space_pose_matrix(armature: bpy.types.Object, pose_bone: bpy.ty
 def build_import_bone_mapping(
     anim_bone_names: List[str],
     armature: bpy.types.Object,
+    parent_indices: Optional[List[int]] = None,
     selected_bone_names: Optional[set[str]] = None,
 ) -> ImportBoneMapping:
     """Resolve animation bone indices against an armature and optional selected-bone filter."""
@@ -92,16 +99,27 @@ def build_import_bone_mapping(
             continue
 
         mapping.matched_pose_bones[index] = pose_bone
-        mapping.rest_local_by_anim_idx[index] = get_rest_local_matrix(pose_bone)
+
+    for index, pose_bone in mapping.matched_pose_bones.items():
+        sparse_parent_index = None
+        if parent_indices and index < len(parent_indices):
+            parent_index = parent_indices[index]
+            if 0 <= parent_index < len(anim_bone_names):
+                sparse_parent_index = parent_index
+                mapping.parent_anim_idx[index] = parent_index
+        elif pose_bone.parent:
+            parent_name = pose_bone.parent.name.lower()
+            if parent_name in bone_name_to_anim_idx:
+                sparse_parent_index = bone_name_to_anim_idx[parent_name]
+                mapping.parent_anim_idx[index] = sparse_parent_index
+
+        sparse_parent_bone = mapping.matched_pose_bones.get(sparse_parent_index) if sparse_parent_index is not None else None
+        mapping.rest_local_by_anim_idx[index] = get_rest_local_matrix(pose_bone, parent_pose_bone=sparse_parent_bone)
 
         if selected_name_filter is not None and pose_bone.name.lower() not in selected_name_filter:
             continue
 
         mapping.bone_mapping[index] = pose_bone
-        if pose_bone.parent:
-            parent_name = pose_bone.parent.name.lower()
-            if parent_name in bone_name_to_anim_idx:
-                mapping.parent_anim_idx[index] = bone_name_to_anim_idx[parent_name]
 
     return mapping
 
@@ -131,7 +149,7 @@ def clear_action_curves_for_bones(action: bpy.types.Action, bone_names: set[str]
 
     bone_names_lower = {bone_name.lower() for bone_name in bone_names}
     curves_to_remove = []
-    for fcurve in action.fcurves:
+    for fcurve in iter_action_fcurves(action):
         data_path = fcurve.data_path or ""
         if not data_path.startswith('pose.bones["'):
             continue
@@ -142,7 +160,7 @@ def clear_action_curves_for_bones(action: bpy.types.Action, bone_names: set[str]
             curves_to_remove.append(fcurve)
 
     for fcurve in curves_to_remove:
-        action.fcurves.remove(fcurve)
+        remove_action_fcurve(action, fcurve)
 
 
 def get_current_world_matrices_by_anim_idx(
