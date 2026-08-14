@@ -12,6 +12,7 @@ from .skeleton_space import (
     apply_bone_axis_adapter,
     armature_uses_bone_axis_adapter,
     compose_import_world_matrix,
+    get_export_node_world_matrix,
     mark_armature_bone_axis_adapter,
     remove_bone_axis_adapter,
     take_model_root_proxy_matrix,
@@ -216,7 +217,12 @@ def import_markers(importer: DoW2ModelImporter, chunks: List[RelicChunk]):
 
         if parent_name:
             if parent_name in importer.bone_map and importer.armature:
-                bone_world = importer.bones[importer.bone_map[parent_name]].transform @ marker_matrix
+                pose_bone = importer.armature.pose.bones.get(parent_name) if importer.armature.pose else None
+                if pose_bone is not None:
+                    parent_world = get_export_node_world_matrix(pose_bone, importer.armature)
+                else:
+                    parent_world = importer.bones[importer.bone_map[parent_name]].transform
+                bone_world = parent_world @ marker_matrix
                 empty.parent = importer.armature
                 empty.parent_type = "BONE"
                 empty.parent_bone = parent_name

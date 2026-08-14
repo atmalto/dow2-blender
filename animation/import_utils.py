@@ -31,16 +31,45 @@ def find_pose_bone_case_insensitive(armature: bpy.types.Object, bone_name: str) 
 def get_selected_armature_bone_names(context: bpy.types.Context, armature: bpy.types.Object) -> set[str]:
     """Return selected bone names for the target armature across pose/edit/object contexts."""
     selected_bones: set[str] = set()
+    selected_pose_bones = getattr(context, "selected_pose_bones_from_active_object", None)
+    if selected_pose_bones is None:
+        selected_pose_bones = getattr(context, "selected_pose_bones", None)
 
     if context.mode == 'POSE' and context.active_object == armature:
-        selected_bones.update(pose_bone.name for pose_bone in armature.pose.bones if pose_bone.bone.select)
+        if selected_pose_bones:
+            selected_bones.update(
+                pose_bone.name
+                for pose_bone in selected_pose_bones
+                if getattr(pose_bone, "id_data", None) == armature
+            )
+        if selected_bones:
+            return selected_bones
+
+        selected_bones.update(pose_bone.name for pose_bone in armature.pose.bones if getattr(pose_bone, "select", False))
         return selected_bones
 
     if context.mode == 'EDIT_ARMATURE' and context.active_object == armature:
-        selected_bones.update(edit_bone.name for edit_bone in armature.data.edit_bones if edit_bone.select)
+        selected_edit_bones = getattr(context, "selected_editable_bones", None)
+        if selected_edit_bones:
+            selected_bones.update(edit_bone.name for edit_bone in selected_edit_bones)
+        else:
+            selected_bones.update(edit_bone.name for edit_bone in armature.data.edit_bones if edit_bone.select)
         return selected_bones
 
-    selected_bones.update(bone.name for bone in armature.data.bones if bone.select)
+    if selected_pose_bones:
+        selected_bones.update(
+            pose_bone.name
+            for pose_bone in selected_pose_bones
+            if getattr(pose_bone, "id_data", None) == armature
+        )
+        if selected_bones:
+            return selected_bones
+
+    selected_bones.update(
+        bone.name
+        for bone in armature.data.bones
+        if getattr(bone, "select", False)
+    )
     return selected_bones
 
 

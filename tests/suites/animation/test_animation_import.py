@@ -144,12 +144,15 @@ def test_import_selected_bones_only(ctx):
         if selected_name is None:
             ctx.skip(f"{hkx_path.name}: no tracked bones overlap space_marine.model")
 
-        for bone in armature.data.bones:
-            bone.select = False
-        armature.data.bones[selected_name].select = True
         bpy.ops.object.select_all(action='DESELECT')
         armature.select_set(True)
         bpy.context.view_layer.objects.active = armature
+        if armature.mode != 'POSE':
+            bpy.ops.object.mode_set(mode='POSE')
+        for pose_bone in armature.pose.bones:
+            pose_bone.select = False
+        armature.pose.bones[selected_name].select = True
+        armature.data.bones.active = armature.data.bones[selected_name]
 
         result = bpy.ops.import_scene.dow2_animation(filepath=str(hkx_path), import_selected_bones_only=True)
         if "FINISHED" not in result:
