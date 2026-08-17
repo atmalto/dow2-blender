@@ -12,6 +12,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 TESTS_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_PHYSICS_LIMITS = {
+    "small": 10,
+    "medium": 50,
+    "large": 100,
+}
 
 
 @dataclass(frozen=True)
@@ -27,6 +32,7 @@ class Config:
     scope: str
     model_limit: int
     animation_limit: int
+    physics_limit: int
     source: Path  # which toml file was loaded
 
     @property
@@ -94,5 +100,6 @@ def load_config(explicit_path: Path | None = None, scope: str | None = None) -> 
         scope=scope_name,
         model_limit=int(preset.get("models", 0)),
         animation_limit=int(preset.get("animations", 0)),
+        physics_limit=int(preset.get("physics", DEFAULT_PHYSICS_LIMITS.get(scope_name, 0))),
         source=config_path,
     )

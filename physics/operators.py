@@ -171,7 +171,7 @@ class DOW2_OT_import_physics_hulls(Operator):
 
         utils.delete_physics_hulls(scene)
 
-        created_objects = []
+        created_object_names = []
         for rigid_body in imported_scene.rigid_bodies:
             blender_vertices = [
                 list(dx_to_blender_position(Vector(vertex)))
@@ -187,12 +187,25 @@ class DOW2_OT_import_physics_hulls(Operator):
                 None,
                 presets.infer_preset_from_motion_type(rigid_body.motion_type),
                 imported_config=rigid_body.export_config,
+                imported_position=rigid_body.position,
+                imported_rotation=rigid_body.rotation,
             )
             if hull_obj is None:
                 continue
             hull_obj["dow2_physics_motion_type"] = rigid_body.motion_type
             hull_obj["dow2_physics_source_system"] = rigid_body.system_name
-            created_objects.append(hull_obj)
+            created_object_names.append(hull_obj.name)
+
+        created_objects = []
+        seen_names = set()
+        for object_name in created_object_names:
+            if object_name in seen_names:
+                continue
+            current_obj = bpy.data.objects.get(object_name)
+            if current_obj is None:
+                continue
+            created_objects.append(current_obj)
+            seen_names.add(object_name)
 
         if not created_objects:
             self.report({"ERROR"}, "No importable convex hulls were found in the selected file")

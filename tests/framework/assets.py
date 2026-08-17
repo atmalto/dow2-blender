@@ -33,6 +33,13 @@ class CollisionAsset:
     sibling_models: tuple[Path, ...]
 
 
+@dataclass(frozen=True)
+class PhysicsAsset:
+    path: Path
+    category: str  # 'physics' | 'rubble'
+    model_path: Path
+
+
 def _art_root(data_root: Path) -> Path:
     return data_root / ART_SUBDIR
 
@@ -149,3 +156,61 @@ def find_loose_hkx(model_dir: Path) -> list[Path]:
     if not anim_dir.is_dir():
         return []
     return sorted(anim_dir.glob("*.hkx"))
+
+
+def _classify_physics(path: Path) -> str:
+    return "rubble" if path.stem.lower().endswith("_rubble_physics") else "physics"
+
+
+def _preferred_model_for_physics(path: Path) -> Path | None:
+    stem = path.stem
+    lower = stem.lower()
+    if lower.endswith("_rubble_physics"):
+        candidate = path.with_name(stem[: -len("_rubble_physics")] + "_rubble.model")
+        return candidate if candidate.is_file() else None
+    if lower.endswith("_physics"):
+        candidate = path.with_name(stem[: -len("_physics")] + ".model")
+        return candidate if candidate.is_file() else None
+    return None
+
+
+def find_physics(data_root: Path, limit: int | None = None) -> list[PhysicsAsset]:
+    """Return exact-paired ``*_physics.hkx`` assets under ``art/``.
+
+    This phase deliberately keeps pairing strict: only same-folder canonical
+    ``foo_physics.hkx -> foo.model`` and ``foo_rubble_physics.hkx -> foo_rubble.model``
+    matches are included. Odd corpus exceptions are left for later phases.
+    Placeholder helper assets under ``art/defaults`` and ``art/fx`` are skipped.
+    """
+    art = _art_root(data_root)
+    if not art.is_dir():
+        return []
+
+    buckets: dict[str, list[PhysicsAsset]] = {"physics": [], "rubble": []}
+    for physics_path in sorted(art.rglob("*.hkx")):
+        lower = physics_path.name.lower()
+        if not lower.endswith("_physics.hkx"):
+            continue
+        rel_parts = {part.lower() for part in physics_path.relative_to(art).parts}
+        if "defaults" in rel_parts or "fx" in rel_parts:
+            continue
+        model_path = _preferred_model_for_physics(physics_path)
+        if model_path is None:
+            continue
+        asset = PhysicsAsset(
+            path=physics_path,
+            category=_classify_physics(physics_path),
+            model_path=model_path,
+        )
+        buckets[asset.category].append(asset)
+
+    order = ["physics", "rubble"]
+    interleaved: list[PhysicsAsset] = []
+    idx = 0
+    while any(buckets[category] for category in order):
+        category = order[idx % len(order)]
+        if buckets[category]:
+            interleaved.append(buckets[category].pop(0))
+        idx += 1
+
+    return interleaved if limit is None else interleaved[:limit]

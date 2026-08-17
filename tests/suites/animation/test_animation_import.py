@@ -133,6 +133,14 @@ def test_import_selected_bones_only(ctx):
     if not hkx_path.is_file():
         ctx.skip(f"single HKX test clip missing: {hkx_path}")
 
+    def set_pose_bone_selected(pose_bone, selected: bool) -> None:
+        if hasattr(pose_bone, "select"):
+            pose_bone.select = selected
+            return
+        bone = getattr(pose_bone, "bone", None)
+        if bone is not None and hasattr(bone, "select"):
+            bone.select = selected
+
     with fixtures.scratch_dir(ctx.config, "anim_selected_hkx") as scratch:
         armature = anim_helpers.load_space_marine_model(ctx)
         bpy.ops.wm.save_as_mainfile(filepath=str(scratch / "space_marine_selected.blend"))
@@ -150,8 +158,8 @@ def test_import_selected_bones_only(ctx):
         if armature.mode != 'POSE':
             bpy.ops.object.mode_set(mode='POSE')
         for pose_bone in armature.pose.bones:
-            pose_bone.select = False
-        armature.pose.bones[selected_name].select = True
+            set_pose_bone_selected(pose_bone, False)
+        set_pose_bone_selected(armature.pose.bones[selected_name], True)
         armature.data.bones.active = armature.data.bones[selected_name]
 
         result = bpy.ops.import_scene.dow2_animation(filepath=str(hkx_path), import_selected_bones_only=True)

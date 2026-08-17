@@ -70,7 +70,7 @@ def build_physics_systems(scene: bpy.types.Scene) -> List[PhysicsSystemData]:
                 key=lambda obj: (utils.get_hull_body_name(obj).lower(), obj.name.lower()),
             )
             for hull_obj in hull_objects:
-                hull_vertices = utils.hull_object_to_dx_vertices(hull_obj)
+                hull_vertices, hull_position, hull_rotation = utils.hull_object_to_dx_export_body(hull_obj)
                 if not hull_vertices:
                     continue
                 config = hull_properties.resolve_export_settings(hull_obj)
@@ -78,6 +78,8 @@ def build_physics_systems(scene: bpy.types.Scene) -> List[PhysicsSystemData]:
                     ConvexHullData(
                         name=utils.get_hull_body_name(hull_obj),
                         vertices=hull_vertices,
+                        position=hull_position,
+                        rotation=hull_rotation,
                         friction=float(config["friction"]),
                         restitution=float(config["restitution"]),
                         motion_type=str(config["motion_type"]),
@@ -103,7 +105,7 @@ def build_physics_systems(scene: bpy.types.Scene) -> List[PhysicsSystemData]:
                 )
 
         if rigid_bodies:
-            systems.append(PhysicsSystemData(name="Default Physics System", rigid_bodies=rigid_bodies))
+            systems.append(PhysicsSystemData(name=state_name, rigid_bodies=rigid_bodies))
 
     return systems
 

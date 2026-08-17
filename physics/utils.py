@@ -6,7 +6,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import bmesh
 import bpy
-from mathutils import Vector
+from mathutils import Quaternion, Vector
 
 from ..utils import blender_to_dx_position, link_object_to_collection
 
@@ -24,6 +24,8 @@ LOD_PROP = "dow2_physics_lod"
 WORKFLOW_PROP = "dow2_physics_workflow"
 ARMATURE_PROP = "dow2_is_physics_armature"
 GENERATED_BONE_PROP = "dow2_is_generated_physics_bone"
+BODY_POSITION_PROP = "dow2_physics_body_position"
+BODY_ROTATION_PROP = "dow2_physics_body_rotation"
 VERTEX_WEIGHT_EPSILON = 1e-6
 
 
@@ -431,6 +433,8 @@ def create_or_replace_hull_object(
     armature_obj: Optional[bpy.types.Object],
     generation_preset: str,
     imported_config: Optional[dict] = None,
+    imported_position: Optional[Sequence[float]] = None,
+    imported_rotation: Optional[Sequence[float]] = None,
 ) -> Optional[bpy.types.Object]:
     from . import hull_properties
 
@@ -458,6 +462,15 @@ def create_or_replace_hull_object(
     hull_obj[WORKFLOW_PROP] = workflow_name
     hull_obj["dow2_group"] = state_name
     hull_obj["dow2_lod"] = lod_level
+    if imported_position is not None and len(imported_position) >= 3:
+        hull_obj[BODY_POSITION_PROP] = [float(imported_position[0]), float(imported_position[1]), float(imported_position[2])]
+    if imported_rotation is not None and len(imported_rotation) >= 4:
+        hull_obj[BODY_ROTATION_PROP] = [
+            float(imported_rotation[0]),
+            float(imported_rotation[1]),
+            float(imported_rotation[2]),
+            float(imported_rotation[3]),
+        ]
 
     target_collection = ensure_physics_lod_collection(scene, state_name, lod_level)
     link_object_to_collection(hull_obj, target_collection)
@@ -575,6 +588,62 @@ def hull_object_to_dx_vertices(obj: bpy.types.Object) -> List[List[float]]:
         dx_x, dx_y, dx_z = blender_to_dx_position(world_position)
         vertices.append([dx_x, dx_y, dx_z])
     return vertices
+
+
+def _get_hull_body_position(obj: bpy.types.Object, world_vertices: Sequence[Sequence[float]]) -> List[float]:
+    stored = obj.get(BODY_POSITION_PROP)
+    if stored is not None:
+        try:
+            if len(stored) >= 3:
+                return [float(stored[0]), float(stored[1]), float(stored[2])]
+        except (TypeError, ValueError, KeyError, IndexError):
+            pass
+
+    count = max(len(world_vertices), 1)
+    accum = [0.0, 0.0, 0.0]
+    for vertex in world_vertices:
+        accum[0] += float(vertex[0])
+        accum[1] += float(vertex[1])
+        accum[2] += float(vertex[2])
+    return [accum[0] / count, accum[1] / count, accum[2] / count]
+
+
+def _get_hull_body_rotation(obj: bpy.types.Object) -> List[float]:
+    stored = obj.get(BODY_ROTATION_PROP)
+    if stored is not None:
+        try:
+            if len(stored) >= 4:
+                quat = Quaternion((float(stored[3]), float(stored[0]), float(stored[1]), float(stored[2])))
+                quat_length_sq = sum(component * component for component in quat)
+                if quat_length_sq > 1.0e-12:
+                    quat.normalize()
+                    return [quat.x, quat.y, quat.z, quat.w]
+        except (TypeError, ValueError, KeyError, IndexError):
+            pass
+    return [0.0, 0.0, 0.0, 1.0]
+
+
+def hull_object_to_dx_export_body(obj: bpy.types.Object) -> Tuple[List[List[float]], List[float], List[float]]:
+    world_vertices = hull_object_to_dx_vertices(obj)
+    if not world_vertices:
+        return [], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]
+
+    position = _get_hull_body_position(obj, world_vertices)
+    rotation = _get_hull_body_rotation(obj)
+    body_quat = Quaternion((rotation[3], rotation[0], rotation[1], rotation[2]))
+    body_quat_length_sq = sum(component * component for component in body_quat)
+    if body_quat_length_sq <= 1.0e-12:
+        body_quat = Quaternion((1.0, 0.0, 0.0, 0.0))
+    else:
+        body_quat.normalize()
+    inverse_quat = body_quat.conjugated()
+
+    position_vec = Vector((position[0], position[1], position[2]))
+    local_vertices: List[List[float]] = []
+    for vertex in world_vertices:
+        local_vertex = inverse_quat @ (Vector(vertex) - position_vec)
+        local_vertices.append([float(local_vertex.x), float(local_vertex.y), float(local_vertex.z)])
+    return local_vertices, position, [float(body_quat.x), float(body_quat.y), float(body_quat.z), float(body_quat.w)]
 
 
 def count_nonempty_state_bins(scene: bpy.types.Scene) -> int:

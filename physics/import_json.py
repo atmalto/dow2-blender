@@ -69,6 +69,7 @@ def parse_physics_json(json_path: str, source_format: str) -> ImportedPhysicsSce
                     body_name,
                     motion_type,
                     vertices,
+                    parse_json_body_transform(body_data),
                     parse_json_export_config(body_data, motion_type),
                 )
             )
@@ -79,12 +80,14 @@ def parse_physics_json(json_path: str, source_format: str) -> ImportedPhysicsSce
         state_name = infer_state_name(
             system_name, [body[0] for body in bodies], len(systems), system_index
         )
-        for body_name, motion_type, vertices, export_config in bodies:
+        for body_name, motion_type, vertices, body_transform, export_config in bodies:
             scene.rigid_bodies.append(
                 ImportedRigidBody(
                     name=body_name or f"RigidBody {len(scene.rigid_bodies) + 1}",
                     vertices=vertices,
                     motion_type=motion_type,
+                    position=body_transform["position"],
+                    rotation=body_transform["rotation"],
                     state_name=state_name,
                     lod_level=infer_lod_level(body_name),
                     system_index=system_index,
@@ -116,6 +119,28 @@ def parse_json_vertices(vertices_data: object) -> List[List[float]]:
         except (TypeError, ValueError):
             continue
     return vertices
+
+
+def parse_json_rotation(rotation_data: object) -> List[float]:
+    if not isinstance(rotation_data, list) or len(rotation_data) < 4:
+        return []
+
+    try:
+        return [
+            float(rotation_data[0]),
+            float(rotation_data[1]),
+            float(rotation_data[2]),
+            float(rotation_data[3]),
+        ]
+    except (TypeError, ValueError):
+        return []
+
+
+def parse_json_body_transform(body_data: Dict[str, object]) -> Dict[str, List[float]]:
+    return {
+        "position": parse_vector3_data(body_data.get("position")) or [],
+        "rotation": parse_json_rotation(body_data.get("rotation")),
+    }
 
 
 def parse_json_export_config(

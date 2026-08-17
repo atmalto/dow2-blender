@@ -17,6 +17,8 @@ class ImportedRigidBody:
     lod_level: int
     system_index: int
     system_name: str = ""
+    position: List[float] = field(default_factory=list)
+    rotation: List[float] = field(default_factory=list)
     export_config: Dict[str, object] = field(default_factory=dict)
 
 
