@@ -40,7 +40,6 @@
 #include "simulation_settings.h"
 #include "transform_session_controller.h"
 #include "simulation_world.h"
-#include "viewport_widget.h"
 
 namespace
 {
