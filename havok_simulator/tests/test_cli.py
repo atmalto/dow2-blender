@@ -264,14 +264,17 @@ def test_physics_rubble():
 
 def test_objects_force_on_plane():
     # A large static plane with its top at y = 0; a light sphere and a heavy cube
-    # resting on it; a directed push force aimed at each along -Z. Same strength on
-    # different masses -> the light sphere must travel farther than the heavy cube.
+    # sit side by side, with a third "control" box parked farther out. A SINGLE
+    # cylinder force (radius 3.5 m) is centered between the sphere and cube and
+    # aimed along -Z. The cylinder volume must shove BOTH bodies it envelops from
+    # one force (proving the volumetric field, not a single ray), while the control
+    # box outside the radius stays put. Same force on different masses -> the light
+    # sphere still travels farther than the heavy cube.
     sphere_pos = [-3.0, 0.5, 0.0]
     cube_pos = [3.0, 0.5, 0.0]
-    # Same force on a light sphere (5 kg) and a heavier cube (20 kg): the force is
-    # above the cube's static friction so it moves a little, while the sphere rolls
-    # much farther -> a clear mass-dependent outcome.
+    control_pos = [8.0, 0.5, 0.0]
     force_strength = 150.0
+    force_radius = 3.5
 
     out = scene_path("test3_objects_force.hkscene")
     result, code = run_cli([
@@ -282,12 +285,14 @@ def test_objects_force_on_plane():
          "position": sphere_pos, "scale": [0.5, 0.5, 0.5], "mass": 5.0, "restitution": 0.2},
         {"cmd": "add_object", "object": "box", "body": "dynamic",
          "position": cube_pos, "scale": [0.5, 0.5, 0.5], "mass": 20.0, "restitution": 0.2},
-        # Forces sit at +Z of each object; default orientation points along -Z, so
-        # the ray travels through the object and pushes it in -Z.
-        {"cmd": "add_force", "position": [sphere_pos[0], sphere_pos[1], 6.0],
-         "strength": force_strength, "mode": "push", "active": True},
-        {"cmd": "add_force", "position": [cube_pos[0], cube_pos[1], 6.0],
-         "strength": force_strength, "mode": "push", "active": True},
+        # Control box parked at x=8, well outside the 3.5 m cylinder radius.
+        {"cmd": "add_object", "object": "box", "body": "dynamic",
+         "position": control_pos, "scale": [0.5, 0.5, 0.5], "mass": 10.0, "restitution": 0.2},
+        # ONE cylinder force centered at x=0 (between sphere and cube), sitting at
+        # +Z and aimed along -Z. Radius 3.5 m reaches both objects (each 3 m off the
+        # axis) but not the control box (8 m off the axis).
+        {"cmd": "add_force", "position": [0.0, 0.5, 6.0],
+         "strength": force_strength, "mode": "push", "active": True, "radius": force_radius},
         {"cmd": "get_props", "target": "scene"},
         {"cmd": "save_scene", "path": out},
         {"cmd": "run", "steps": 60},
@@ -299,29 +304,46 @@ def test_objects_force_on_plane():
     pre = by_cmd(result, "get_props", 0)
     post = by_cmd(result, "get_props", 1)
 
-    def find_dynamic(scene, shape):
-        for b in bodies_of_kind(scene, "physics_object", dynamic_only=True):
-            if b["shape"] == shape:
-                return b
-        raise AssertionError("no dynamic %s in scene" % shape)
+    def dynamic_boxes(scene):
+        return [b for b in bodies_of_kind(scene, "physics_object", dynamic_only=True)
+                if b["shape"] == "box"]
 
-    sphere_pre = find_dynamic(pre, "sphere")["position"]
-    sphere_post = find_dynamic(post, "sphere")["position"]
-    cube_pre = find_dynamic(pre, "box")["position"]
-    cube_post = find_dynamic(post, "box")["position"]
+    def find_sphere(scene):
+        for b in bodies_of_kind(scene, "physics_object", dynamic_only=True):
+            if b["shape"] == "sphere":
+                return b
+        raise AssertionError("no dynamic sphere in scene")
+
+    def nearest_box(scene, ref_x):
+        boxes = dynamic_boxes(scene)
+        return min(boxes, key=lambda b: abs(b["position"][0] - ref_x))
+
+    sphere_pre = find_sphere(pre)["position"]
+    sphere_post = find_sphere(post)["position"]
+    cube_pre = nearest_box(pre, cube_pos[0])["position"]
+    cube_post = nearest_box(post, cube_pos[0])["position"]
+    control_pre = nearest_box(pre, control_pos[0])["position"]
+    control_post = nearest_box(post, control_pos[0])["position"]
 
     sphere_move = dist2d(sphere_pre, sphere_post)
     cube_move = dist2d(cube_pre, cube_post)
+    control_move = dist2d(control_pre, control_post)
 
+    # The single cylinder force must move BOTH enveloped bodies (volume effect).
     assert sphere_move > 0.2, "sphere barely moved (%.3f m)" % sphere_move
-    assert cube_move > 0.05, "cube did not react to the force (%.3f m)" % cube_move
+    assert cube_move > 0.05, "cube in the cylinder did not react (%.3f m)" % cube_move
+    # The control box outside the radius must stay essentially still.
+    assert control_move < 0.1, \
+        "control box outside the cylinder should not move (%.3f m)" % control_move
+    # Same force, different mass -> lighter body outruns the heavier one.
     assert sphere_move > cube_move, \
         "light sphere (%.3f m) should outrun heavy cube (%.3f m)" % (sphere_move, cube_move)
-    # Both should still be resting on / above the plane (top at y=0), not tunneled.
-    assert bottom_of(find_dynamic(post, "sphere")) > -0.5
-    assert bottom_of(find_dynamic(post, "box")) > -0.5
+    # Both enveloped bodies should still be resting on / above the plane, not tunneled.
+    assert bottom_of(find_sphere(post)) > -0.5
+    assert bottom_of(nearest_box(post, cube_pos[0])) > -0.5
     return {"scene": out,
-            "detail": "sphere moved %.2fm, heavier cube moved %.2fm" % (sphere_move, cube_move)}
+            "detail": "cylinder(r=%.1fm) pushed sphere %.2fm + cube %.2fm, control held %.2fm"
+                      % (force_radius, sphere_move, cube_move, control_move)}
 
 
 # --- Test 4: scene create / save / load / clear ------------------------------
@@ -427,7 +449,7 @@ def test_manipulation_and_edit():
 TESTS = [
     ("Ragdoll import + heavy drop", test_ragdoll_drop, True),
     ("Physics rubble import + static plane", test_physics_rubble, True),
-    ("Objects on plane shoved by forces", test_objects_force_on_plane, True),
+    ("Cylinder force shoves objects in radius", test_objects_force_on_plane, True),
     ("Scene create/save/load/clear", test_scene_save_load_clear, False),
     ("Object + force manipulation/edit", test_manipulation_and_edit, False),
 ]

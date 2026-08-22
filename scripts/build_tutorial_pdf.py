@@ -13,6 +13,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = REPO_ROOT / "working" / "guide" / "DoW2 Tools Tutorial.md"
 DEFAULT_OUTPUT = REPO_ROOT / "working" / "guide" / "DoW2 Tools Tutorial.pdf"
+SIMULATOR_INPUT = REPO_ROOT / "working" / "guide" / "Havok Simulator Guide.md"
+SIMULATOR_OUTPUT = REPO_ROOT / "working" / "guide" / "Havok Simulator Guide.pdf"
+
+GUIDE_TARGETS = {
+    "addon": (DEFAULT_INPUT, DEFAULT_OUTPUT),
+    "simulator": (SIMULATOR_INPUT, SIMULATOR_OUTPUT),
+}
 
 
 def _find_browser() -> str:
@@ -187,19 +194,55 @@ def build_pdf(markdown_path: Path, pdf_path: Path) -> None:
         _run_browser(markdown_path, pdf_path)
 
 
+def build_named_guide(name: str, output_override: Path | None = None) -> Path:
+    markdown_path, default_pdf_path = GUIDE_TARGETS[name]
+    pdf_path = output_override if output_override is not None else default_pdf_path
+    build_pdf(markdown_path, pdf_path)
+    return pdf_path.resolve()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build the DoW2 Tools tutorial PDF from Markdown.")
-    parser.add_argument("input", nargs="?", default=str(DEFAULT_INPUT), help="Markdown tutorial path")
-    parser.add_argument("-o", "--output", default=str(DEFAULT_OUTPUT), help="Output PDF path")
+    parser.add_argument("input", nargs="?", help="Markdown tutorial path")
+    parser.add_argument("-o", "--output", help="Output PDF path")
+    parser.add_argument(
+        "--guide",
+        choices=sorted(GUIDE_TARGETS.keys()),
+        help="Build one of the named guide PDFs using its default paths.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Build all named guide PDFs.",
+    )
     args = parser.parse_args(argv)
 
     try:
-        build_pdf(Path(args.input), Path(args.output))
+        if args.input:
+            if args.all or args.guide:
+                raise ValueError("Do not combine an explicit input path with --guide or --all.")
+
+            output_path = Path(args.output) if args.output else Path(args.input).with_suffix(".pdf")
+            build_pdf(Path(args.input), output_path)
+            print(f"Wrote {output_path.resolve()}")
+            return 0
+
+        if args.all:
+            if args.output:
+                raise ValueError("--output cannot be used with --all.")
+
+            built_paths = [build_named_guide(name) for name in ("addon", "simulator")]
+            for built_path in built_paths:
+                print(f"Wrote {built_path}")
+            return 0
+
+        guide_name = args.guide or "addon"
+        built_path = build_named_guide(guide_name, Path(args.output) if args.output else None)
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Wrote {Path(args.output).resolve()}")
+    print(f"Wrote {built_path}")
     return 0
 
 

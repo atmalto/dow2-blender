@@ -460,13 +460,14 @@ namespace
             spec.rotation_degrees[2]);
 
         state.shape_type = BodyRenderState::ShapeArrow;
-        set_default_render_fields(state, false, false, is_preview);
+        set_default_render_fields(state, false, true, is_preview);
         state.position[0] = spec.position[0];
         state.position[1] = spec.position[1];
         state.position[2] = spec.position[2];
         copy_quaternion(rotation, state.rotation);
-        state.half_extents[0] = 4.0f;
-        state.half_extents[1] = spec.strength * 0.01f;
+        const float visual_radius = spec.radius > 0.0f ? spec.radius : 0.08f;
+        state.half_extents[0] = spec.radius > 0.0f ? (visual_radius * 4.0f + 2.0f) : 4.0f;
+        state.half_extents[1] = visual_radius;
         state.half_extents[2] = 120.0f;
         if (spec.mode == SimulationController::ForcePull)
         {
@@ -587,6 +588,7 @@ SimulationController::SimulationController()
     m_force_preview_spec.strength = 180.0f;
     m_force_preview_spec.mode = ForcePush;
     m_force_preview_spec.active = true;
+    m_force_preview_spec.radius = 1.0f;
 
     m_transform_session_controller = new TransformSessionController(*this, m_scene_document);
 

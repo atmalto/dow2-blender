@@ -1,14 +1,14 @@
 import bpy
 
 
-def import_model(filepath):
+def import_model(filepath, *, reset_scene=True):
     result = bpy.ops.import_scene.dow2_model(
         filepath=filepath,
         import_meshes=True,
         import_materials=False,
         import_bones=True,
         import_markers=False,
-        reset_scene=True,
+        reset_scene=reset_scene,
     )
     return {"FINISHED"} if result == {"FINISHED"} else result
 

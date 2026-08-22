@@ -1,8 +1,15 @@
 RAGDOLL_SKELETON_PREFIX = "ragdoll_skeleton::"
+RAGDOLL_ANIMATION_PREFIX = "ragdoll_animation::"
 RAGDOLL_BODIES_COLLECTION_NAME = "ragdoll_bodies"
 RAGDOLL_SKELETON_PROP = "dow2_ragdoll_skeleton"
+RAGDOLL_ANIMATION_SKELETON_PROP = "dow2_ragdoll_animation_skeleton"
+RAGDOLL_BONE_ORDER_PROP = "dow2_ragdoll_bone_order"
 RAGDOLL_SOURCE_ARMATURE_PROP = "dow2_ragdoll_source_armature"
 RAGDOLL_SOURCE_BONE_PROP = "dow2_ragdoll_source_bone"
+# Stores the ragdoll->animation bone-mapping transform (pos+rot+scale, 10 floats)
+# exactly as read from the shipped .hkx, so export can re-emit the original
+# mapping instead of collapsing every mapping to identity.
+RAGDOLL_MAPPING_TRANSFORM_PROP = "dow2_ragdoll_mapping_transform"
 RAGDOLL_LOCAL_POS_PROP = "dow2_ragdoll_local_pos"
 RAGDOLL_LOCAL_ROT_PROP = "dow2_ragdoll_local_rot"
 RAGDOLL_LOCAL_SCALE_PROP = "dow2_ragdoll_local_scale"
@@ -14,6 +21,11 @@ RAGDOLL_BODY_HEIGHT_PROP = "dow2_ragdoll_body_height"
 RAGDOLL_BODY_LENGTH_PROP = "dow2_ragdoll_body_length"
 RAGDOLL_BODY_VERTEX_A_PROP = "dow2_ragdoll_body_vertex_a"
 RAGDOLL_BODY_VERTEX_B_PROP = "dow2_ragdoll_body_vertex_b"
+# Marks a body whose object origin is authoritative (imported at the Havok joint
+# with asymmetric capsule vertices). The live capsule sync must NOT recenter such
+# a body onto its geometric midpoint, or the origin drifts off the joint and the
+# exported body no longer matches its constraint pivots.
+RAGDOLL_BODY_JOINT_ORIGIN_PROP = "dow2_ragdoll_body_joint_origin"
 RAGDOLL_CAPSULE_HANDLE_PROP = "dow2_ragdoll_capsule_handle"
 RAGDOLL_CAPSULE_HANDLE_BODY_PROP = "dow2_ragdoll_capsule_handle_body"
 RAGDOLL_CAPSULE_HANDLE_ENDPOINT_PROP = "dow2_ragdoll_capsule_handle_endpoint"

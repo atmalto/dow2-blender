@@ -5,6 +5,7 @@ import bpy
 from ...utils import blender_to_dx_matrix
 from .constants import (
     RAGDOLL_BODIES_COLLECTION_NAME,
+    RAGDOLL_BONE_ORDER_PROP,
     RAGDOLL_BODY_BONE_PROP,
     RAGDOLL_BODY_HEIGHT_PROP,
     RAGDOLL_BODY_LENGTH_PROP,
@@ -158,6 +159,14 @@ def find_ragdoll_skeleton_for_source(source_armature: bpy.types.Object) -> bpy.t
 
 
 def _ragdoll_bones_in_order(skeleton_object: bpy.types.Object) -> list[bpy.types.Bone]:
+    bones_by_name = {bone.name: bone for bone in skeleton_object.data.bones}
+    stored_order = skeleton_object.get(RAGDOLL_BONE_ORDER_PROP, None)
+    if stored_order:
+        ordered = [bones_by_name[name] for name in stored_order if name in bones_by_name]
+        # Append any bones added after import that are not in the stored order.
+        ordered.extend(bone for bone in skeleton_object.data.bones if bone.name not in set(stored_order))
+        if len(ordered) == len(skeleton_object.data.bones):
+            return ordered
     return list(skeleton_object.data.bones)
 
 

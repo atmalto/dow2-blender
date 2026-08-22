@@ -12,6 +12,7 @@
 #include <Common/Base/hkBase.h>
 #include <Physics/Collide/Shape/Convex/Box/hkpBoxShape.h>
 #include <Physics/Collide/Shape/Convex/Capsule/hkpCapsuleShape.h>
+#include <Physics/Collide/Shape/Convex/ConvexTranslate/hkpConvexTranslateShape.h>
 #include <Physics/Collide/Shape/Convex/Sphere/hkpSphereShape.h>
 #include <Physics/Dynamics/Constraint/Bilateral/LimitedHinge/hkpLimitedHingeConstraintData.h>
 #include <Physics/Dynamics/Constraint/Bilateral/Ragdoll/hkpRagdollConstraintData.h>
@@ -19,6 +20,7 @@
 #include <Physics/Dynamics/Constraint/hkpConstraintInstance.h>
 #include <Physics/Dynamics/Entity/hkpRigidBody.h>
 #include <Physics/Dynamics/Entity/hkpRigidBodyCinfo.h>
+#include <Physics/Dynamics/Motion/hkpMotion.h>
 #include <Physics/Dynamics/World/hkpPhysicsSystem.h>
 #include <Physics/Utilities/Dynamics/Inertia/hkpInertiaTensorComputer.h>
 #include <Physics/Utilities/Serialize/hkpPhysicsData.h>
@@ -103,7 +105,7 @@ namespace
 		return new hkaSkeletonMapper(mapperData);
 	}
 
-	hkpShape* createShape(const RawRigidBody& raw)
+	hkpConvexShape* createPrimitiveShape(const RawRigidBody& raw)
 	{
 		if (raw.shapeType == "sphere")
 		{
@@ -119,6 +121,28 @@ namespace
 			hkVector4(raw.vertexA[0], raw.vertexA[1], raw.vertexA[2]),
 			hkVector4(raw.vertexB[0], raw.vertexB[1], raw.vertexB[2]),
 			raw.radius);
+	}
+
+	hkpShape* createShape(const RawRigidBody& raw)
+	{
+		hkpConvexShape* primitive = createPrimitiveShape(raw);
+
+		const bool hasOffset =
+			raw.shapeOffset[0] != 0.0f || raw.shapeOffset[1] != 0.0f || raw.shapeOffset[2] != 0.0f;
+		if (hasOffset)
+		{
+			// Wrap the primitive in a convex-translate so the collision shape sits
+			// at the offset while the body origin stays on the joint (matching the
+			// shipped files). The inertia computer then puts the mass centre at the
+			// offset automatically.
+			hkpConvexTranslateShape* wrapped = new hkpConvexTranslateShape(
+				primitive,
+				hkVector4(raw.shapeOffset[0], raw.shapeOffset[1], raw.shapeOffset[2]));
+			primitive->removeReference();
+			return wrapped;
+		}
+
+		return primitive;
 	}
 
 	hkpRigidBody* createRigidBody(const RawRigidBody& raw, std::vector<char*>& storage, hkpShape*& shapeOut)
@@ -151,20 +175,48 @@ namespace
 		hkpInertiaTensorComputer::computeShapeVolumeMassProperties(shapeOut, targetMass, massProperties);
 		info.m_mass = massProperties.m_mass;
 		info.m_inertiaTensor = massProperties.m_inertiaTensor;
-		info.m_centerOfMass.setZero4();
+		// Preserve the shape's true center of mass (for a ragdoll capsule whose
+		// origin sits at the bone joint this is the capsule midpoint). Forcing it
+		// to zero moved ever limb's mass center onto the joint, which corrupted
+		// the ragdoll's dynamics. hkpInertiaTensorComputer already gives the
+		// correct COM for the shape, so keep it in stead of discarding it.
+		info.m_centerOfMass = massProperties.m_centerOfMass;
 		info.m_friction = raw.friction;
 		info.m_restitution = raw.restitution;
 		info.m_linearDamping = raw.linearDamping;
 		info.m_angularDamping = raw.angularDamping;
 		info.m_collisionFilterInfo = raw.collisionFilterInfo;
 		info.m_qualityType = static_cast<hkpCollidableQualityType>(raw.qualityType);
+		info.m_maxLinearVelocity = 200.0f;
+		info.m_maxAngularVelocity = 200.0f;
 
 		hkpRigidBody* rigidBody = new hkpRigidBody(info);
-		rigidBody->setCenterOfMassLocal(hkVector4::getZero());
 		rigidBody->setPositionAndRotation(
 			hkVector4(raw.position[0], raw.position[1], raw.position[2]),
 			hkQuaternion(raw.rotation[0], raw.rotation[1], raw.rotation[2], raw.rotation[3]));
 		rigidBody->setName(duplicateString(raw.name, storage));
+
+		// hkMotionState's constructor does not initialize the velocity limits or
+		// the deactivation frame counters, and (unlike the physics import path)
+		// these ragdoll bodies are never run thorugh an hkpWorld to settle them.
+		// Left at there garbage defaults they serialize as if the body has been
+		// asleep for tens of thousands of frames (huge deactivationNumInactiveFrames)
+		// with a bogus max velocity, so the loaded ragdoll never wakes up and just
+		// deflects everything. Intialize them to the shipped/active defaults.
+		hkpMotion* motion = reinterpret_cast<hkpMotion*>(&rigidBody->m_motion);
+		motion->m_deactivationIntegrateCounter = 15;
+		motion->m_deactivationNumInactiveFrames[0] = 0;
+		motion->m_deactivationNumInactiveFrames[1] = 0;
+		hkMotionState* motionState = motion->getMotionState();
+		// m_maxLinearVelocity/m_maxAngularVelocity are hkUFloat8: a single byte that
+		// indexes a version-specific lookup table. Assigning a float hear uses the
+		// Havok 5.5 table (200.0f -> byte 127), but we serialize a Havok 4.5.1 file
+		// where that same byte 127 decodes to ~0.01 (the tables differ beetween
+		// versions). A ~0.01 cap freezes every ragdoll bone, so the loaded ragdoll
+		// can never move/yield. Write the raw byte the shipped 4.5.1 files use (200,
+		// which decodes to ~202.8 under 4.5.1) so the caps survieve load intact.
+		motionState->m_maxLinearVelocity.m_value = 200;
+		motionState->m_maxAngularVelocity.m_value = 200;
 		return rigidBody;
 	}
 
@@ -232,6 +284,49 @@ namespace
 			|| raw.constraintType == "hinge_limits"
 			|| raw.constraintType == "hkLimitedHingeConstraintData";
 	}
+
+	void buildConstraintInstances(
+		const std::vector<RawConstraint>& rawConstraints,
+		const std::vector<hkpRigidBody*>& rigidBodies,
+		hkpPositionConstraintMotor* motor,
+		std::vector<char*>& storage,
+		std::vector<hkpConstraintInstance*>& out)
+	{
+		out.assign(rawConstraints.size(), static_cast<hkpConstraintInstance*>(0));
+		for (size_t index = 0; index < rawConstraints.size(); ++index)
+		{
+			const RawConstraint& constraint = rawConstraints[index];
+			if (constraint.bodyAIndex < 0
+				|| constraint.bodyBIndex < 0
+				|| constraint.bodyAIndex >= static_cast<int>(rigidBodies.size())
+				|| constraint.bodyBIndex >= static_cast<int>(rigidBodies.size()))
+			{
+				fprintf(stderr, "Warning: skipping constraint %u due to invalid body indices (%d, %d)\n",
+					static_cast<unsigned>(index),
+					constraint.bodyAIndex,
+					constraint.bodyBIndex);
+				continue;
+			}
+
+			if (isLimitedHingeConstraint(constraint))
+			{
+				out[index] = createLimitedHingeConstraint(
+					constraint,
+					rigidBodies[constraint.bodyAIndex],
+					rigidBodies[constraint.bodyBIndex],
+					storage);
+			}
+			else
+			{
+				out[index] = createRagdollConstraint(
+					constraint,
+					rigidBodies[constraint.bodyAIndex],
+					rigidBodies[constraint.bodyBIndex],
+					motor,
+					storage);
+			}
+		}
+	}
 }
 
 RagdollBuildResult::RagdollBuildResult()
@@ -284,41 +379,33 @@ bool buildRagdollScene(const ragdoll_io::RawRagdollData& rawData, RagdollBuildRe
 	result.sharedMotor->m_proportionalRecoveryVelocity = 5.0f;
 	result.sharedMotor->m_constantRecoveryVelocity = 0.2f;
 
-	printf("Creating constraints...\n");
-	result.constraints.resize(rawData.constraints.size(), static_cast<hkpConstraintInstance*>(0));
-	for (size_t index = 0; index < rawData.constraints.size(); ++index)
-	{
-		const RawConstraint& constraint = rawData.constraints[index];
-		if (constraint.bodyAIndex < 0
-			|| constraint.bodyBIndex < 0
-			|| constraint.bodyAIndex >= static_cast<int>(result.rigidBodies.size())
-			|| constraint.bodyBIndex >= static_cast<int>(result.rigidBodies.size()))
-		{
-			fprintf(stderr, "Warning: skipping constraint %u due to invalid body indices (%d, %d)\n",
-				static_cast<unsigned>(index),
-				constraint.bodyAIndex,
-				constraint.bodyBIndex);
-			continue;
-		}
+	printf("Creating constraints (ragdoll instance set)...\n");
+	buildConstraintInstances(
+		rawData.constraints,
+		result.rigidBodies,
+		result.sharedMotor,
+		result.stringStorage,
+		result.constraints);
 
-		if (isLimitedHingeConstraint(constraint))
-		{
-			result.constraints[index] = createLimitedHingeConstraint(
-				constraint,
-				result.rigidBodies[constraint.bodyAIndex],
-				result.rigidBodies[constraint.bodyBIndex],
-				result.stringStorage);
-		}
-		else
-		{
-			result.constraints[index] = createRagdollConstraint(
-				constraint,
-				result.rigidBodies[constraint.bodyAIndex],
-				result.rigidBodies[constraint.bodyBIndex],
-				result.sharedMotor,
-				result.stringStorage);
-		}
-	}
+	// The shipped DoW2 ragdoll files store an independant copy of every
+	// constraint in the physics system in addition to the copy owned by the
+	// ragdoll instance (50 hkpConstraintInstance objects for 25 joints).
+	// Sharing a single instance across both containers stops the ragdoll from
+	// loading as a working articulated body, so build a second, independent
+	// set hear that the physics system owns exclusively.
+	//
+	// Critically, the two copies are NOT identical: the ragdoll-instance copy
+	// carries the position motors (used by the ragdoll controller to drive the
+	// pose), while the physics-system copy - the joints actually simulated in
+	// the world - has NULL motors so the ragdoll can go limp on impact. Passing
+	// a motor hear too rigidly holds every joint and the ragdoll never yields.
+	printf("Creating constraints (physics system set)...\n");
+	buildConstraintInstances(
+		rawData.constraints,
+		result.rigidBodies,
+		static_cast<hkpPositionConstraintMotor*>(HK_NULL),
+		result.stringStorage,
+		result.physicsConstraints);
 
 	hkArray<hkpRigidBody*> bodyArray;
 	bodyArray.setSize(static_cast<int>(result.rigidBodies.size()));
@@ -364,11 +451,11 @@ bool buildRagdollScene(const ragdoll_io::RawRagdollData& rawData, RagdollBuildRe
 			result.physicsSystem->addRigidBody(result.rigidBodies[index]);
 		}
 	}
-	for (size_t index = 0; index < result.constraints.size(); ++index)
+	for (size_t index = 0; index < result.physicsConstraints.size(); ++index)
 	{
-		if (result.constraints[index] != HK_NULL)
+		if (result.physicsConstraints[index] != HK_NULL)
 		{
-			result.physicsSystem->addConstraint(result.constraints[index]);
+			result.physicsSystem->addConstraint(result.physicsConstraints[index]);
 		}
 	}
 

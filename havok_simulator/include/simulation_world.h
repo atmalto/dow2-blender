@@ -44,7 +44,6 @@ public:
 
     bool apply_push_force(const std::vector<RagdollRuntime*>& ragdoll_runtimes, const ForceSpec& spec, std::string* error_message);
     void apply_continuous_force_entities(const SceneDocument& scene_document, const std::vector<RagdollRuntime*>& ragdoll_runtimes);
-
     bool apply_entity_runtime_position(
         const SceneDocument& scene_document,
         const std::vector<RagdollRuntime*>& ragdoll_runtimes,
@@ -74,6 +73,7 @@ private:
         SceneEntityKind entity_kind;
         hkpRigidBody* body;
         int render_index;
+        float local_offset[3];
     };
 
     struct RuntimeEntityBinding
@@ -116,6 +116,9 @@ private:
         float hit_point[3],
         float direction[3],
         std::string* error_message) const;
+    void apply_cylinder_force_entity(
+        const ForceSpec& spec,
+        const std::vector<RagdollRuntime*>& ragdoll_runtimes);
     RagdollRuntime* find_ragdoll_runtime_owning_body(
         const std::vector<RagdollRuntime*>& ragdoll_runtimes,
         const hkpRigidBody* body) const;

@@ -672,7 +672,11 @@ void ViewportWidget::draw_grid()
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
+    // Let the grid write depth so it participates correctly in depth testing.
+    // Drawn before the scene objects, this makes the y=0 grid intersect/cut
+    // through geometry at its true 3D position instead of always being hidden
+    // behind objects (which happens when the grid is depth-masked out).
+    glDepthMask(GL_TRUE);
     glLineWidth(1.0f);
     glBegin(GL_LINES);
 

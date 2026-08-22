@@ -1,12 +1,50 @@
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, PointerProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, PointerProperty, StringProperty
 from bpy.types import PropertyGroup
 
 from .authoring import BODY_SHAPE_ITEMS
 from .field_specs import EXPOSED_FIELD_SPECS, TEMPLATE_DRIVEN_FIELDS
 from .templates import list_template_bones, list_template_folders, list_template_models, load_template_library
+from ..utils import load_persisted_settings, store_persisted_settings
+
+
+_RAGDOLL_IMPORT_SETTINGS_ATTR = "ragdoll_import_settings_json"
+_RAGDOLL_IMPORT_PATH_STORAGE_KEY = "_ragdoll_import_path"
+_RAGDOLL_MODEL_PATH_STORAGE_KEY = "_ragdoll_model_path"
+
+
+def _get_persisted_ragdoll_import_value(settings, persisted_key: str, storage_key: str) -> str:
+    current_value = str(settings.get(storage_key, "") or "")
+    if current_value:
+        return current_value
+    payload = load_persisted_settings(bpy.context, _RAGDOLL_IMPORT_SETTINGS_ATTR)
+    return str(payload.get(persisted_key, "") or "")
+
+
+def _set_persisted_ragdoll_import_value(settings, value: str, persisted_key: str, storage_key: str) -> None:
+    text = str(value or "")
+    settings[storage_key] = text
+    payload = load_persisted_settings(bpy.context, _RAGDOLL_IMPORT_SETTINGS_ATTR)
+    payload[persisted_key] = text
+    store_persisted_settings(bpy.context, _RAGDOLL_IMPORT_SETTINGS_ATTR, payload)
+
+
+def _get_ragdoll_import_path(settings) -> str:
+    return _get_persisted_ragdoll_import_value(settings, "ragdoll_import_path", _RAGDOLL_IMPORT_PATH_STORAGE_KEY)
+
+
+def _set_ragdoll_import_path(settings, value: str) -> None:
+    _set_persisted_ragdoll_import_value(settings, value, "ragdoll_import_path", _RAGDOLL_IMPORT_PATH_STORAGE_KEY)
+
+
+def _get_ragdoll_model_path(settings) -> str:
+    return _get_persisted_ragdoll_import_value(settings, "ragdoll_model_path", _RAGDOLL_MODEL_PATH_STORAGE_KEY)
+
+
+def _set_ragdoll_model_path(settings, value: str) -> None:
+    _set_persisted_ragdoll_import_value(settings, value, "ragdoll_model_path", _RAGDOLL_MODEL_PATH_STORAGE_KEY)
 
 
 def _update_constraint_preview_settings(self, context):
@@ -72,6 +110,49 @@ class DOW2_RagdollSettings(PropertyGroup):
         name="Ragdoll Name",
         description="Name used for the generated ragdoll skeleton collection",
         default="ragdoll",
+    )
+
+    ragdoll_import_path: StringProperty(
+        name="Ragdoll HKX",
+        description="Path to the ragdoll HKX file to import",
+        default="",
+        get=_get_ragdoll_import_path,
+        set=_set_ragdoll_import_path,
+    )
+
+    ragdoll_model_path: StringProperty(
+        name="Companion Model",
+        description="Path to the companion DoW2 .model used to build the imported authored ragdoll state",
+        default="",
+        get=_get_ragdoll_model_path,
+        set=_set_ragdoll_model_path,
+    )
+
+    ragdoll_last_import_name: StringProperty(
+        name="Last Imported Ragdoll",
+        default="",
+    )
+
+    ragdoll_last_import_collection: StringProperty(
+        name="Last Imported Collection",
+        default="",
+    )
+
+    ragdoll_last_import_source_format: StringProperty(
+        name="Last Import Source Format",
+        default="",
+    )
+
+    ragdoll_last_import_body_count: IntProperty(
+        name="Last Import Body Count",
+        default=0,
+        min=0,
+    )
+
+    ragdoll_last_import_constraint_count: IntProperty(
+        name="Last Import Constraint Count",
+        default=0,
+        min=0,
     )
 
     template_model: EnumProperty(

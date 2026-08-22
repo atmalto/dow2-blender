@@ -17,6 +17,11 @@ DEFAULT_PHYSICS_LIMITS = {
     "medium": 50,
     "large": 100,
 }
+DEFAULT_RAGDOLL_LIMITS = {
+    "small": 5,
+    "medium": 15,
+    "large": 55,
+}
 
 
 @dataclass(frozen=True)
@@ -33,6 +38,7 @@ class Config:
     model_limit: int
     animation_limit: int
     physics_limit: int
+    ragdoll_limit: int
     source: Path  # which toml file was loaded
 
     @property
@@ -101,5 +107,6 @@ def load_config(explicit_path: Path | None = None, scope: str | None = None) -> 
         model_limit=int(preset.get("models", 0)),
         animation_limit=int(preset.get("animations", 0)),
         physics_limit=int(preset.get("physics", DEFAULT_PHYSICS_LIMITS.get(scope_name, 0))),
+        ragdoll_limit=int(preset.get("ragdolls", DEFAULT_RAGDOLL_LIMITS.get(scope_name, 0))),
         source=config_path,
     )

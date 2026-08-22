@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import bpy
+from mathutils import Matrix
 
 from ..bodies import create_rigid_bodies_from_skeleton
 from ..constraints import create_constraints
@@ -21,11 +22,13 @@ from .constants import (
     RAGDOLL_BODY_SHAPE_PROP,
     RAGDOLL_BODY_VERTEX_A_PROP,
     RAGDOLL_BODY_VERTEX_B_PROP,
+    RAGDOLL_MAPPING_TRANSFORM_PROP,
     RAGDOLL_SOURCE_BONE_PROP,
 )
 from .constraint_props import read_constraint_settings
 from .geometry import _authored_body_dx_transform, _blender_vector_to_dx_local
 from .queries import _body_object_by_bone_name, _bone_local_transform, _ragdoll_bones_in_order
+from ...utils import blender_to_dx_matrix
 
 
 def build_authored_ragdoll_data(
@@ -63,14 +66,25 @@ def build_authored_ragdoll_data(
         if str(bone.get(RAGDOLL_SOURCE_BONE_PROP, "") or "")
     }
     bone_mappings = []
+    ragdoll_bone_by_name = {bone.name: bone for bone in ragdoll_bones}
     for index, bone_name in enumerate(ragdoll_names):
         source_bone_name = ragdoll_bone_map.get(bone_name)
         if source_bone_name and source_bone_name in bone_name_to_idx:
+            mapping_bone = ragdoll_bone_by_name.get(bone_name)
+            stored = list(mapping_bone.get(RAGDOLL_MAPPING_TRANSFORM_PROP, [])) if mapping_bone is not None else []
+            if len(stored) == 10:
+                transform = {
+                    "pos": [stored[0], stored[1], stored[2]],
+                    "rot": [stored[3], stored[4], stored[5], stored[6]],
+                    "scale": [stored[7], stored[8], stored[9]],
+                }
+            else:
+                transform = {"pos": [0, 0, 0], "rot": [0, 0, 0, 1], "scale": [1, 1, 1]}
             bone_mappings.append(
                 {
                     "ragdoll_bone": index,
                     "anim_bone": bone_name_to_idx[source_bone_name],
-                    "transform": {"pos": [0, 0, 0], "rot": [0, 0, 0, 1], "scale": [1, 1, 1]},
+                    "transform": transform,
                 }
             )
 
@@ -115,6 +129,26 @@ def build_authored_ragdoll_data(
         else:
             body_data["vertex_a"] = vertex_a_dx
             body_data["vertex_b"] = vertex_b_dx
+
+        # Bodies whose collision shape is offset from the joint (imported from a
+        # convex-translate wrapper) sit at the shape centre, but their joints and
+        # mass frame belong at the bone. Writing the body at the shape centre
+        # dislocates every joint on it (they tear loose on the first sim step).
+        # Restore the shipped encoding: place the body ON its bone and record the
+        # offset so the writer re-wraps the shape in a convex-translate.
+        bone = skeleton_object.data.bones.get(bone_name)
+        if bone is not None:
+            bone_world = skeleton_object.matrix_world @ bone.head_local
+            gap_world = body_object.matrix_world.translation - bone_world
+            if gap_world.length > 1.0e-4:
+                gap_local = body_object.matrix_world.to_quaternion().inverted() @ gap_world
+                true_matrix = (
+                    Matrix.Translation(bone_world)
+                    @ body_object.matrix_world.to_quaternion().to_matrix().to_4x4()
+                )
+                true_pos = blender_to_dx_matrix(true_matrix).decompose()[0]
+                body_data["position"] = [true_pos.x, true_pos.y, true_pos.z]
+                body_data["shape_offset"] = _blender_vector_to_dx_local(gap_local)
 
     constraints = create_constraints(ragdoll_skeleton)
     constraint_by_name = {constraint["name"]: constraint for constraint in constraints}

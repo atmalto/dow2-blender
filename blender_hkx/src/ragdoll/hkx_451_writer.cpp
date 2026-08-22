@@ -1,8 +1,7 @@
 #include "hkx_451_writer.h"
 
-#include <map>
 #include <stdio.h>
-#include <string>
+
 #include <vector>
 
 #include <Animation/Animation/Mapper/hkaSkeletonMapper.h>
@@ -10,7 +9,6 @@
 #include <Animation/Ragdoll/Instance/hkaRagdollInstance.h>
 #include <Common/Base/Container/Array/hkArray.h>
 #include <Common/Base/Reflection/hkClass.h>
-#include <Common/Base/Reflection/hkClassEnum.h>
 #include <Common/Base/Reflection/hkClassMember.h>
 #include <Common/Base/Reflection/hkInternalClassMember.h>
 #include <Common/Base/System/Io/OStream/hkOStream.h>
@@ -18,8 +16,10 @@
 #include <Common/Serialize/Packfile/hkPackfileWriter.h>
 #include <Common/Serialize/Util/hkRootLevelContainer.h>
 #include <Common/Serialize/Util/hkStructureLayout.h>
-#include <Physics/Dynamics/Constraint/Motor/Position/hkpPositionConstraintMotor.h>
 #include <Physics/Utilities/Serialize/hkpPhysicsData.h>
+
+#include "legacy_class_cloner.h"
+#include "ragdoll_legacy_motion.h"
 
 namespace
 {
@@ -75,131 +75,6 @@ namespace
 		HK_NULL,
 		0);
 
-	class LegacyClassCloner
-	{
-	public:
-		LegacyClassCloner()
-		{
-		}
-
-		const hkClass* mapClass(const hkClass* current)
-		{
-			if (current == HK_NULL)
-			{
-				return HK_NULL;
-			}
-
-			const std::string mappedName = getMappedName(current->getName());
-			if (mappedName == current->getName())
-			{
-				return current;
-			}
-
-			std::map<const hkClass*, hkClass*>::const_iterator existing = m_classClones.find(current);
-			if (existing != m_classClones.end())
-			{
-				return existing->second;
-			}
-
-			if (m_inProgress.find(current) != m_inProgress.end())
-			{
-				return current;
-			}
-			m_inProgress[current] = true;
-
-			const hkClass* mappedParent = mapClass(current->getParent());
-			const int numInterfaces = current->getNumDeclaredInterfaces();
-			const hkClass** interfaces = HK_NULL;
-			if (numInterfaces > 0)
-			{
-				interfaces = new const hkClass*[numInterfaces];
-				m_interfaceArrays.push_back(interfaces);
-				for (int index = 0; index < numInterfaces; ++index)
-				{
-					interfaces[index] = mapClass(current->getDeclaredInterface(index));
-				}
-			}
-
-			const int numMembers = current->getNumDeclaredMembers();
-			hkInternalClassMember* members = HK_NULL;
-			if (numMembers > 0)
-			{
-				members = new hkInternalClassMember[numMembers];
-				m_memberArrays.push_back(members);
-				for (int index = 0; index < numMembers; ++index)
-				{
-					const hkClassMember& member = current->getDeclaredMember(index);
-					members[index].m_name = member.getName();
-					members[index].m_class = member.hasClass() ? mapClass(member.getClass()) : HK_NULL;
-					members[index].m_enum = member.hasEnumClass() ? &member.getEnumClass() : HK_NULL;
-					members[index].m_type = static_cast<hkUint8>(member.getType());
-					members[index].m_subtype = static_cast<hkUint8>(member.getSubType());
-					members[index].m_cArraySize = static_cast<hkUint16>(member.getCstyleArraySize());
-					members[index].m_flags = static_cast<hkUint16>(member.getFlags().get());
-					members[index].m_offset = static_cast<hkUint16>(member.getOffset());
-					members[index].m_attributes = HK_NULL;
-				}
-			}
-
-			const hkClassEnum* enums = current->getNumDeclaredEnums() > 0 ? &current->getDeclaredEnum(0) : HK_NULL;
-			char* ownedName = duplicateString(mappedName);
-			hkClass* clone = new hkClass(
-				ownedName,
-				mappedParent,
-				current->getObjectSize(),
-				interfaces,
-				numInterfaces,
-				enums,
-				current->getNumDeclaredEnums(),
-				reinterpret_cast<const hkClassMember*>(members),
-				numMembers,
-				HK_NULL,
-				HK_NULL,
-				current->getFlags().get());
-
-			m_ownedClassNames.push_back(ownedName);
-			m_ownedClasses.push_back(clone);
-			m_classClones[current] = clone;
-			m_inProgress.erase(current);
-			return clone;
-		}
-
-	private:
-		static std::string getMappedName(const char* currentName)
-		{
-			if (currentName == HK_NULL)
-			{
-				return std::string();
-			}
-
-			if (strncmp(currentName, "hka", 3) == 0)
-			{
-				return std::string("hk") + (currentName + 3);
-			}
-
-			if (strncmp(currentName, "hkp", 3) == 0)
-			{
-				return std::string("hk") + (currentName + 3);
-			}
-
-			return std::string(currentName);
-		}
-
-		char* duplicateString(const std::string& value)
-		{
-			char* copy = new char[value.length() + 1];
-			memcpy(copy, value.c_str(), value.length() + 1);
-			return copy;
-		}
-
-		std::map<const hkClass*, hkClass*> m_classClones;
-		std::map<const hkClass*, bool> m_inProgress;
-		std::vector<const hkClass**> m_interfaceArrays;
-		std::vector<hkInternalClassMember*> m_memberArrays;
-		std::vector<char*> m_ownedClassNames;
-		std::vector<hkClass*> m_ownedClasses;
-	};
-
 	class LegacyClassListener : public hkPackfileWriter::AddObjectListener
 	{
 	public:
@@ -248,6 +123,8 @@ bool writeRagdollGraphAs451(const RagdollBuildResult& buildResult, const char* o
 	printf("Preparing legacy class mapping...\n");
 	fflush(stdout);
 	LegacyClassCloner cloner;
+	MotionClassOverride motionOverride;
+	cloner.setOverride(&motionOverride);
 	const hkClass* animationContainerClass = cloner.mapClass(&hkaAnimationContainerClass);
 	const hkClass* physicsDataClass = cloner.mapClass(&hkpPhysicsDataClass);
 	const hkClass* ragdollInstanceClass = cloner.mapClass(&hkaRagdollInstanceClass);
@@ -270,6 +147,8 @@ bool writeRagdollGraphAs451(const RagdollBuildResult& buildResult, const char* o
 
 	printf("Configuring packfile writer...\n");
 	fflush(stdout);
+	std::vector<MotionOverflowSave> motionSaves;
+	marshalMotionsTo451(buildResult.rigidBodies, motionSaves);
 	LegacyClassListener listener(cloner);
 	hkBinaryPackfileWriter writer;
 	writer.setContents(&root, hkRootLevelContainerClass, &listener);
@@ -284,6 +163,7 @@ bool writeRagdollGraphAs451(const RagdollBuildResult& buildResult, const char* o
 	hkOstream stream(outputFile);
 	if (!stream.isOk())
 	{
+		restoreMotionOverflows(motionSaves);
 		fprintf(stderr, "Error: cannot open %s for writing\n", outputFile);
 		return false;
 	}
@@ -292,9 +172,11 @@ bool writeRagdollGraphAs451(const RagdollBuildResult& buildResult, const char* o
 	fflush(stdout);
 	if (writer.save(stream.getStreamWriter(), options) != HK_SUCCESS)
 	{
+		restoreMotionOverflows(motionSaves);
 		fprintf(stderr, "Error: failed to write Havok 4.5.1 ragdoll packfile\n");
 		return false;
 	}
 
+	restoreMotionOverflows(motionSaves);
 	return true;
 }

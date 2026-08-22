@@ -44,6 +44,7 @@ The add-on uses an exe and a dll in the background for animation/physics/ragdoll
 7. Santos Model Editor `.anim` import.
 8. DoW2 batch animation processing and export.
 9. QoL features:
+   - Havok simulation of DoW2 `.hkx` physics and ragdolls.
    - Creation of DoW2 collsion meshes, physics bodies, ragdoll, bounding boxes and volumes, 
    - Badge placement editing for DoW2 Relic Materials.
    - Scene graph view of DoW2-relevant objects in the scene.
@@ -59,6 +60,7 @@ The add-on uses an exe and a dll in the background for animation/physics/ragdoll
   - Map I/O is in development
 - The *rest-pose export* option exists, but it has not been thoroughly tested yet.
 - *Smoothing groups, bounding volumes, and collision meshes* are heuristic. They are useful, but they may need manual checking.
+- Debugging physics and ragdoll is done through the Havok Simulator standalone app, which is included in the add-on.
 
 ## Usage Notes
 
@@ -78,6 +80,7 @@ The add-on uses an exe and a dll in the background for animation/physics/ragdoll
 - Animation tools support editing `.rig` and `.tracks` files. Direct file editing is available from the rig and track settings panel, but editing from the panel itself is recommended.
 - Animation batch processing does not currently show progress. Wait for Blender to unfreeze before assuming it failed.
 - `write_all_animations.blend` imports all animation clips as a chain into one Blender scene file. It can take a while to generate.
+- A more detailed usage guide will be provided fro havok and ragdoll authoring.
 
 ## Utility Usage
 
@@ -90,7 +93,7 @@ The add-on uses an exe and a dll in the background for animation/physics/ragdoll
    - Use *Walkable Angle* to limit walkable surface based on faces of selected mesh
    - Use *Use Selected Face* in object edit mode to limit collision mesh generation to only selected faces of the mesh for finegrained control of collision mesh generation.
 6. **DoW2 Scene graph**: Shows scene objects detected by the add-on as DoW2-relevant objects. This helps organize your scene and find DoW2 supported objects.
-
+7. Import DoW2 ragdoll.hkx or _physics.hkx into havok_simulator.exe, add static planes, dynamic objects and force objects to simulate interaction with hkx rigid bodies and ragdolls.
 
 ## Supported Files
 
@@ -102,8 +105,6 @@ General:
 - `.markers`
 - `.collision`
 - `.dds`
-- `ragdoll.hkx`
-- `*_physics.hkx`
 
 Animation:
 
@@ -111,5 +112,9 @@ Animation:
 - Havok `.hkx` import/export
 - Relic `.hkanim` pack/unpack
 
+Physics:
+
+- Ragdoll `.hkx`
+- destruction physics `.hkx`
 
 Reach out to `sonofwilkin1337@gmail.com` with issues, or open an issue on the github repo. Pull requests are welcome, but please reach out first to discuss the change before submitting a PR.

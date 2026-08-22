@@ -112,10 +112,30 @@ def _draw_preface(layout, settings):
     if preface_body is None:
         return
     preface_body.prop(settings, "preview_constraints", text="Show Constraint Previews")
-    hint_box = preface_body.box()
-    hint_box.label(text="Constraint previews keep the parent-to-child arrows and add angular limit overlays.", icon="INFO")
-    hint_box.label(text="Plane Min and Plane Max toggles only affect the viewport preview; they do not change authored limits.", icon="INFO")
-    hint_box.label(text="Missing body links stay broken until that bone gets a rigid body.")
+
+
+def _draw_import_section(layout, settings):
+    import_header, import_body = layout.panel("dow2_ragdoll_import", default_closed=False)
+    import_header.label(text="Import", icon="IMPORT")
+    if import_body is None:
+        return
+
+    info_box = import_body.box()
+    info_box.label(text="Choose a ragdoll HKX and its companion .model then click import.")
+
+    ragdoll_row = import_body.row(align=True)
+    ragdoll_row.prop(settings, "ragdoll_import_path", text="Ragdoll HKX")
+    ragdoll_row.operator("dow2.pick_ragdoll_import_path", text="", icon="FILE_FOLDER")
+
+    model_row = import_body.row(align=True)
+    model_row.prop(settings, "ragdoll_model_path", text="Companion .model")
+    model_row.operator("dow2.pick_ragdoll_model_path", text="", icon="FILE_FOLDER")
+
+    import_body.prop(settings, "ragdoll_name", text="Target Name")
+
+    import_button_row = import_body.row()
+    import_button_row.enabled = bool(str(settings.ragdoll_import_path or "").strip()) and bool(str(settings.ragdoll_model_path or "").strip())
+    import_button_row.operator("dow2.import_ragdoll_hkx", text="Import Ragdoll HKX", icon="IMPORT")
 
 
 def _draw_skeleton_section(layout, context, settings):
@@ -368,7 +388,7 @@ def _draw_export_section(layout, settings):
     hkx_box.label(text="HKX", icon="PHYSICS")
     path_row = hkx_box.row(align=True)
     path_row.prop(settings, "hkx_export_path", text="")
-    path_row.operator("dow2.export_ragdoll_hkx", text="Export HKX", icon="EXPORT")
+    path_row.operator("dow2.export_ragdoll_hkx", text="Export Ragdoll HKX", icon="EXPORT")
     hkx_box.prop(settings, "auto_generate_missing_bodies")
     hkx_box.prop(settings, "export_json_sidecar")
     if settings.export_json_sidecar:
@@ -392,6 +412,7 @@ class DOW2_PT_ragdoll_panel(Panel):
         settings = scene.dow2_ragdoll_settings
 
         _draw_preface(layout, settings)
+        _draw_import_section(layout, settings)
         _draw_skeleton_section(layout, context, settings)
         _draw_body_section(layout, context, settings)
         _draw_authoring_section(layout, context, settings)

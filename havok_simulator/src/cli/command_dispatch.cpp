@@ -208,6 +208,7 @@ namespace
         j.set("strength", JsonValue(static_cast<double>(spec.strength)));
         j.set("mode", JsonValue(spec.mode));
         j.set("active", JsonValue(spec.active));
+        j.set("radius", JsonValue(static_cast<double>(spec.radius)));
         return j;
     }
 
@@ -325,11 +326,13 @@ namespace
         spec.strength = 100.0f;
         spec.mode = SimulationController::ForcePush;
         spec.active = true;
+        spec.radius = 0.0f;
 
         cmd.member_vec("position", spec.position, 3);
         cmd.member_vec("rotation", spec.rotation_degrees, 3);
         cmd.member_vec("rotation_degrees", spec.rotation_degrees, 3);
         spec.strength = static_cast<float>(cmd.member_number("strength", spec.strength));
+        spec.radius = static_cast<float>(cmd.member_number("radius", spec.radius));
         if (cmd.has("mode") && !parse_force_mode(*cmd.find("mode"), &spec.mode))
         {
             return result_error("add_force", "unknown force mode");
@@ -506,6 +509,7 @@ namespace
         cmd.member_vec("rotation", spec.rotation_degrees, 3);
         cmd.member_vec("rotation_degrees", spec.rotation_degrees, 3);
         spec.strength = static_cast<float>(cmd.member_number("strength", spec.strength));
+        spec.radius = static_cast<float>(cmd.member_number("radius", spec.radius));
         if (cmd.has("mode")) { parse_force_mode(*cmd.find("mode"), &spec.mode); }
         spec.active = cmd.member_bool("active", spec.active);
 

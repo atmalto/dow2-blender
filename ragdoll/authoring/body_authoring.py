@@ -15,6 +15,7 @@ from .constants import (
     RAGDOLL_BODY_FRICTION_PROP,
     RAGDOLL_BODY_HALF_EXTENTS_PROP,
     RAGDOLL_BODY_HEIGHT_PROP,
+    RAGDOLL_BODY_JOINT_ORIGIN_PROP,
     RAGDOLL_BODY_LENGTH_PROP,
     RAGDOLL_BODY_LINEAR_DAMPING_PROP,
     RAGDOLL_BODY_MASS_PROP,
@@ -63,7 +64,13 @@ def update_body_mesh(
     mesh = body_object.data
     if shape == "BOX":
         if half_extents is not None and len(half_extents) >= 3:
-            _build_box_mesh(mesh, float(half_extents[0]), float(half_extents[2]) * 2.0, float(half_extents[1]) * 2.0)
+            # half_extents are in DX/Havok local axes [hx, hy, hz]. The body's
+            # rotation is converted DX->Blender with DX-Y -> Blender-Z and
+            # DX-Z -> Blender-Y (see _dx_vector_to_blender_local = [-x,-z,y]),
+            # so the box extents must follow the same swap: Blender Y gets hz,
+            # Blender Z gets hy. Without this, anisotropic boxes (e.g. the flat
+            # zoanthrope fins) display rotated 90deg; near-cubes hide it.
+            _build_box_mesh(mesh, float(half_extents[0]), float(half_extents[1]) * 2.0, float(half_extents[2]) * 2.0)
         else:
             _build_box_mesh(mesh, radius, height, length)
     elif shape == "SPHERE":
@@ -123,6 +130,12 @@ def apply_body_data_to_object(
     if shape_type == "SPHERE":
         height = radius * 2.0
         length = radius * 2.0
+    elif shape_type == "BOX":
+        # A box has no radius in the source data (it is 0), but the sync path
+        # reconstructs the box X half-extent from RADIUS_PROP. Seed it from the
+        # X half-extent so a later force-sync does not collapse X to the 0.001
+        # clamp.
+        radius = max(float(half_extents[0]), 0.001)
 
     update_body_mesh(body_object, shape_type, radius, height, length, vertex_a=vertex_a, vertex_b=vertex_b, half_extents=half_extents)
     body_object[RAGDOLL_BODY_VERTEX_A_PROP] = vertex_a
@@ -145,6 +158,11 @@ def apply_body_data_to_object(
         origin_position = Vector(position) - (rotation_quaternion.to_matrix() @ local_origin_offset)
         dx_matrix = Matrix.Translation(origin_position) @ rotation_quaternion.to_matrix().to_4x4()
         body_object.matrix_world = dx_to_blender_matrix(dx_matrix)
+        # The origin now sits at the authoritative Havok joint with asymmetric
+        # capsule vertices. Flag it so the live capsule sync never recenters it
+        # onto the geometric midpoint (which would drift the body off its joint
+        # and desync it from the constraint pivots on export).
+        body_object[RAGDOLL_BODY_JOINT_ORIGIN_PROP] = True
     for prop_name in ("dow2_ragdoll_body_position", "dow2_ragdoll_body_rotation"):
         if prop_name in body_object:
             del body_object[prop_name]

@@ -122,6 +122,7 @@ namespace
         xml.writeAttribute("strength", to_string(force.spec.strength));
         xml.writeAttribute("mode", QString::number(force.spec.mode));
         xml.writeAttribute("active", force.spec.active ? "1" : "0");
+        xml.writeAttribute("radius", to_string(force.spec.radius));
         xml.writeEndElement();
     }
 }
@@ -362,6 +363,7 @@ bool load_scene_file(
                     force.spec.strength = read_float_attribute(attributes, "strength", 0.0f);
                     force.spec.mode = read_int_attribute(attributes, "mode", 0);
                     force.spec.active = read_bool_attribute(attributes, "active", true);
+                    force.spec.radius = read_float_attribute(attributes, "radius", 0.0f);
 
                     scene->forces.push_back(force);
                     xml.skipCurrentElement();

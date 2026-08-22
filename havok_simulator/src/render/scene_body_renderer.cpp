@@ -389,45 +389,140 @@ void SceneBodyRenderer::draw_convex_hull(const BodyRenderState& body, bool use_b
 	glEnd();
 }
 
+namespace
+{
+	const float kArrowTwoPi = 6.28318530717958647692f;
+	const int kArrowSegments = 18;
+
+	// Flat-shaded solid cylinder + end cap, matching the flat GL_FLAT single-color
+	// style used by the rigid body shapes (form comes from the wireframe overlay,
+	// not per-vertex shading).
+	void draw_arrow_solid(float beam_length, float shaft_end, float radius, float head_radius)
+	{
+		int i = 0;
+
+		glShadeModel(GL_FLAT);
+
+		// Cylinder side wall.
+		glBegin(GL_QUAD_STRIP);
+		for (i = 0; i <= kArrowSegments; ++i)
+		{
+			const float angle = (static_cast<float>(i % kArrowSegments) / static_cast<float>(kArrowSegments)) * kArrowTwoPi;
+			const float nx = std::cos(angle);
+			const float ny = std::sin(angle);
+			glNormal3f(nx, ny, 0.0f);
+			glVertex3f(nx * radius, ny * radius, 0.0f);
+			glVertex3f(nx * radius, ny * radius, shaft_end);
+		}
+		glEnd();
+
+		// Near cap so the tail end is closed.
+		glBegin(GL_TRIANGLE_FAN);
+		glNormal3f(0.0f, 0.0f, 1.0f);
+		glVertex3f(0.0f, 0.0f, 0.0f);
+		for (i = kArrowSegments; i >= 0; --i)
+		{
+			const float angle = (static_cast<float>(i % kArrowSegments) / static_cast<float>(kArrowSegments)) * kArrowTwoPi;
+			glVertex3f(std::cos(angle) * radius, std::sin(angle) * radius, 0.0f);
+		}
+		glEnd();
+
+		// Cone head side.
+		glBegin(GL_TRIANGLE_FAN);
+		glNormal3f(0.0f, 0.0f, -1.0f);
+		glVertex3f(0.0f, 0.0f, -beam_length);
+		for (i = 0; i <= kArrowSegments; ++i)
+		{
+			const float angle = (static_cast<float>(i % kArrowSegments) / static_cast<float>(kArrowSegments)) * kArrowTwoPi;
+			glVertex3f(std::cos(angle) * head_radius, std::sin(angle) * head_radius, shaft_end);
+		}
+		glEnd();
+
+		// Cone base cap.
+		glBegin(GL_TRIANGLE_FAN);
+		glNormal3f(0.0f, 0.0f, 1.0f);
+		glVertex3f(0.0f, 0.0f, shaft_end);
+		for (i = kArrowSegments; i >= 0; --i)
+		{
+			const float angle = (static_cast<float>(i % kArrowSegments) / static_cast<float>(kArrowSegments)) * kArrowTwoPi;
+			glVertex3f(std::cos(angle) * head_radius, std::sin(angle) * head_radius, shaft_end);
+		}
+		glEnd();
+	}
+
+	// Wireframe outline of the arrow, used for the dark edge overlay and the yellow
+	// selection highlight (so a selected force shows thin edges instead of a solid
+	// blob that punches through the depth buffer).
+	void draw_arrow_wire(float beam_length, float shaft_end, float radius, float head_radius)
+	{
+		int i = 0;
+		const int spokes = 4;
+
+		glBegin(GL_LINE_LOOP);
+		for (i = 0; i < kArrowSegments; ++i)
+		{
+			const float angle = (static_cast<float>(i) / static_cast<float>(kArrowSegments)) * kArrowTwoPi;
+			glVertex3f(std::cos(angle) * radius, std::sin(angle) * radius, 0.0f);
+		}
+		glEnd();
+
+		glBegin(GL_LINE_LOOP);
+		for (i = 0; i < kArrowSegments; ++i)
+		{
+			const float angle = (static_cast<float>(i) / static_cast<float>(kArrowSegments)) * kArrowTwoPi;
+			glVertex3f(std::cos(angle) * radius, std::sin(angle) * radius, shaft_end);
+		}
+		glEnd();
+
+		glBegin(GL_LINE_LOOP);
+		for (i = 0; i < kArrowSegments; ++i)
+		{
+			const float angle = (static_cast<float>(i) / static_cast<float>(kArrowSegments)) * kArrowTwoPi;
+			glVertex3f(std::cos(angle) * head_radius, std::sin(angle) * head_radius, shaft_end);
+		}
+		glEnd();
+
+		glBegin(GL_LINES);
+		for (i = 0; i < spokes; ++i)
+		{
+			const float angle = (static_cast<float>(i) / static_cast<float>(spokes)) * kArrowTwoPi;
+			const float cx = std::cos(angle);
+			const float sy = std::sin(angle);
+			glVertex3f(cx * radius, sy * radius, 0.0f);
+			glVertex3f(cx * radius, sy * radius, shaft_end);
+			glVertex3f(cx * head_radius, sy * head_radius, shaft_end);
+			glVertex3f(0.0f, 0.0f, -beam_length);
+		}
+		glEnd();
+	}
+}
+
 void SceneBodyRenderer::draw_arrow(const BodyRenderState& body, bool use_body_color)
 {
-	const float shaft_length = body.half_extents[0];
-	const float head_length = shaft_length * 0.28f;
-	const float wing = body.half_extents[1] > 0.05f ? body.half_extents[1] : 1.2f;
-	const float ray_length = body.half_extents[2] > shaft_length ? body.half_extents[2] : shaft_length;
-	const float shaft_line_width = body.is_preview ? 5.0f : 3.0f;
-	const float tail_line_width = body.is_preview ? 3.0f : 1.0f;
+	const float beam_length = body.half_extents[0] > 0.5f ? body.half_extents[0] : 4.0f;
+
+	float beam_radius = body.half_extents[1];
+	if (beam_radius < 0.03f)
+	{
+		beam_radius = 0.03f;
+	}
+	const float head_length = beam_length * 0.28f;
+	const float head_radius = beam_radius * 1.9f;
+	const float shaft_end = -(beam_length - head_length);
 
 	if (use_body_color)
 	{
 		glColor3f(body.color[0], body.color[1], body.color[2]);
 	}
 
-	glLineWidth(shaft_line_width);
-	glBegin(GL_LINES);
-
-	glVertex3f(0.0f, 0.0f, 0.0f);
-	glVertex3f(0.0f, 0.0f, -shaft_length);
-
-	glVertex3f(0.0f, 0.0f, -shaft_length);
-	glVertex3f(wing * 0.35f, 0.0f, -shaft_length + head_length);
-
-	glVertex3f(0.0f, 0.0f, -shaft_length);
-	glVertex3f(-wing * 0.35f, 0.0f, -shaft_length + head_length);
-
-	glVertex3f(0.0f, 0.0f, -shaft_length);
-	glVertex3f(0.0f, wing * 0.35f, -shaft_length + head_length);
-
-	glVertex3f(0.0f, 0.0f, -shaft_length);
-	glVertex3f(0.0f, -wing * 0.35f, -shaft_length + head_length);
-
-	glEnd();
-
-	glLineWidth(tail_line_width);
-	glBegin(GL_LINES);
-	glVertex3f(0.0f, 0.0f, -shaft_length);
-	glVertex3f(0.0f, 0.0f, -ray_length);
-	glEnd();
+	if (body.is_solid)
+	{
+		draw_arrow_solid(beam_length, shaft_end, beam_radius, head_radius);
+	}
+	else
+	{
+		draw_arrow_wire(beam_length, shaft_end, beam_radius, head_radius);
+	}
 }
 
 void SceneBodyRenderer::apply_body_transform(const BodyRenderState& body)

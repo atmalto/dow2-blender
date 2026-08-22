@@ -112,6 +112,7 @@ struct SceneUniformScaleSession
         : active(false)
         , entity_id(0)
         , entity_kind(SceneEntityKindNone)
+        , sensitivity(1.0f)
     {
         committed_scale[0] = 1.0f;
         committed_scale[1] = 1.0f;
@@ -124,6 +125,9 @@ struct SceneUniformScaleSession
     bool active;
     SceneEntityId entity_id;
     SceneEntityKind entity_kind;
+    // Drag-sensitivity multiplier applied to the exponent of the scale factor.
+    // 1.0 = normal (physics objects); < 1.0 = gentler/finer (force radius).
+    float sensitivity;
     float committed_scale[3];
     float preview_scale[3];
 };

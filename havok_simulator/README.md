@@ -1,7 +1,7 @@
 # Havok Simulator
 
-A Qt 4.8 + Havok 5.5 (VS2008) sandbox for importing Dawn of War II ragdoll and
-physics HKX files, dropping/pushing rigid bodies, and watching them simulate.
+This is a Qt 4.8 + Havok 5.5 (VS2008) sand box app i wrote that i sued to importing Dawn of War II ragdoll and
+physics HKX files, dropping/pushing rigid bodies, and watching them simulate to validate blender import/export behavior. It is not a general-purpose Havok tool, but could be generalized, it does have a headless CLI mode that can be used to automate tests.
 
 There are two build targets that share the same engine core (`sim_core.pri`):
 
@@ -10,7 +10,7 @@ There are two build targets that share the same engine core (`sim_core.pri`):
 
 ## GUI app
 
-Release build:
+Release build - lightweight:
 
 ```bash
 ./build.sh release
@@ -34,11 +34,9 @@ or `build_vs2008/release/` (release).
 
 ## Headless CLI (`havok_sim_cli`)
 
-`havok_sim_cli` boots the same `SimulationController` the GUI uses (no window, no
-OpenGL) and replays a JSON command scenario, printing a JSON result document. It
-is the automation entry point for testing simulator behaviour.
+`havok_sim_cli` boots the same `SimulationController` thatthe GUI uses (i.e no window, no OpenGL) and replays a JSON command scenario, printing a JSON result document. Its' the automation entry point for testing simulator behaviour.
 
-Build it the same way as the GUI (same SDK path rules):
+Build it the same way as the GUI (ie same SDK path rules):
 
 ```bash
 ./build_cli.sh debug
@@ -50,7 +48,7 @@ The executable is written to `build_cli/build/havok_sim_cli.exe` (debug) or
 
 ### Running a scenario
 
-Pass a scenario file, or `-` to read one from stdin:
+Pass a scenario file, or `-` to read one from `stdin`:
 
 ```bash
 ./build_cli/build/havok_sim_cli.exe scenario.json
@@ -108,14 +106,18 @@ Notes:
 
 ## Tests
 
-`tests/test_cli.py` is a standalone runner (no pytest dependency) that exercises
+`tests/test_cli.py` is a runner exercises
 five common workflows end-to-end through `havok_sim_cli`:
 
-1. Ragdoll import + heavy-object drop.
-2. Physics (rubble) import onto a tilted static ramp.
-3. Objects on a plane shoved by directed forces (sphere vs cube, light vs heavy).
-4. Scene create / save / load / clear.
-5. Object + force manipulation (move, rotate, edit rigid-body & force props).
+Tests meant to produce a custom serialized hkscene for visual inspection in the GUI, these test actual DoW2-intended hkx assets :
+  1. Ragdoll import + heavy-object drop on the ragdoll to simulate ragdoll stress/collision behaviour
+  2. Physics (rubble) import onto a tilted static ramp to simulate rigid bodies collision
+
+Tests mainly used as a validation for the base app, nothing DoW2 specific here:
+   1. Objects on a plane shoved by directed forces (sphere vs cube, light vs heavy) 
+   2. Scene create / save / load / clear
+   3. Object + force manipulation (move, rotate, edit rigid-body & force props).
+
 
 Build the CLI first, then run:
 

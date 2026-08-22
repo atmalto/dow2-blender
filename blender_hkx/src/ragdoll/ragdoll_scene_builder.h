@@ -29,6 +29,7 @@ struct RagdollBuildResult
 	hkpPositionConstraintMotor* sharedMotor;
 	std::vector<hkpRigidBody*> rigidBodies;
 	std::vector<hkpConstraintInstance*> constraints;
+	std::vector<hkpConstraintInstance*> physicsConstraints;
 	std::vector<hkpShape*> shapes;
 	std::vector<char*> stringStorage;
 

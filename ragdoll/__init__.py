@@ -7,6 +7,7 @@ validated.
 
 from .constants import DEFAULT_RAGDOLL_BONE_ORDER
 from .field_specs import EXPOSED_FIELD_SPECS, LOCKED_BACKEND_FIELDS, TEMPLATE_DRIVEN_FIELDS
+from .import_types import RagdollImportError
 from .templates import load_template_library, list_template_tree
 
 
@@ -24,6 +25,18 @@ def export_ragdoll_json(*args, **kwargs):
 
 def export_ragdoll_hkx(*args, **kwargs):
     from .exporter import export_ragdoll_hkx as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def load_ragdoll_scene(*args, **kwargs):
+    from .importer import load_ragdoll_scene as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def import_ragdoll_scene(*args, **kwargs):
+    from .scene_importer import import_ragdoll_scene as implementation
 
     return implementation(*args, **kwargs)
 
@@ -49,12 +62,15 @@ __all__ = [
     "DEFAULT_RAGDOLL_BONE_ORDER",
     "EXPOSED_FIELD_SPECS",
     "LOCKED_BACKEND_FIELDS",
+    "RagdollImportError",
     "TEMPLATE_DRIVEN_FIELDS",
     "build_ragdoll_data",
     "create_ragdoll_skeleton_from_armature",
     "export_ragdoll_hkx",
     "export_ragdoll_json",
     "get_armature",
+    "import_ragdoll_scene",
+    "load_ragdoll_scene",
     "import_model",
     "list_template_tree",
     "load_template_library",

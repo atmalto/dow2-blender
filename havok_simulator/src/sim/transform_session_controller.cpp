@@ -233,10 +233,15 @@ bool TransformSessionController::begin_uniform_scale()
         return false;
     }
 
-    object = find_object_entity(m_scene_document.selected_entity().id);
-    if (!object || !can_uniform_scale_object(*object))
+    // Forces have no geometric shape to validate; the scale gesture drives their
+    // cylinder radius. Physics objects still require a scalable shape.
+    if (m_scene_document.selected_entity().kind != SceneEntityKindForce)
     {
-        return false;
+        object = find_object_entity(m_scene_document.selected_entity().id);
+        if (!object || !can_uniform_scale_object(*object))
+        {
+            return false;
+        }
     }
 
     if (!m_scene_document.begin_uniform_scale())

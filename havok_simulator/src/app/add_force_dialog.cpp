@@ -33,6 +33,7 @@ AddForceDialog::AddForceDialog(SimulationController* simulation, ViewportWidget*
     , m_rotation_y_value(0)
     , m_rotation_z_value(0)
     , m_strength_spin(0)
+    , m_radius_spin(0)
     , m_is_edit_session(false)
     , m_edit_entity_id(0)
 {
@@ -77,8 +78,16 @@ AddForceDialog::AddForceDialog(SimulationController* simulation, ViewportWidget*
     m_strength_spin->setSingleStep(10.0);
     m_strength_spin->setValue(180.0);
 
+    m_radius_spin = new QDoubleSpinBox(this);
+    m_radius_spin->setRange(0.0, 50.0);
+    m_radius_spin->setDecimals(2);
+    m_radius_spin->setSingleStep(0.25);
+    m_radius_spin->setValue(1.0);
+    m_radius_spin->setToolTip("Cylinder radius of the force volume (meters). 0 = single-ray force.");
+
     form_layout->addRow("Mode", m_mode_combo);
     form_layout->addRow("Strength", m_strength_spin);
+    form_layout->addRow("Radius (m)", m_radius_spin);
 
     root_layout->addLayout(form_layout);
     root_layout->addWidget(position_group);
@@ -94,6 +103,7 @@ AddForceDialog::AddForceDialog(SimulationController* simulation, ViewportWidget*
     connect(m_rotation_y_slider, SIGNAL(valueChanged(int)), this, SLOT(update_preview()));
     connect(m_rotation_z_slider, SIGNAL(valueChanged(int)), this, SLOT(update_preview()));
     connect(m_strength_spin, SIGNAL(valueChanged(double)), this, SLOT(update_preview()));
+    connect(m_radius_spin, SIGNAL(valueChanged(double)), this, SLOT(update_preview()));
     connect(buttons, SIGNAL(accepted()), this, SLOT(accept()));
     connect(buttons, SIGNAL(rejected()), this, SLOT(reject()));
 
@@ -117,6 +127,7 @@ SimulationController::ForceSpec AddForceDialog::spec() const
     force_spec.strength = static_cast<float>(m_strength_spin->value());
     force_spec.mode = m_mode_combo ? m_mode_combo->currentIndex() : SimulationController::ForcePush;
     force_spec.active = true;
+    force_spec.radius = m_radius_spin ? static_cast<float>(m_radius_spin->value()) : 1.0f;
     return force_spec;
 }
 
@@ -169,6 +180,12 @@ void AddForceDialog::set_spec(const SimulationController::ForceSpec& spec)
         m_strength_spin->blockSignals(true);
         m_strength_spin->setValue(spec.strength);
         m_strength_spin->blockSignals(false);
+    }
+    if (m_radius_spin)
+    {
+        m_radius_spin->blockSignals(true);
+        m_radius_spin->setValue(spec.radius);
+        m_radius_spin->blockSignals(false);
     }
 
     refresh_value_labels();

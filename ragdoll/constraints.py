@@ -34,10 +34,15 @@ def create_constraints(ragdoll_skeleton, template_bundle=None):
             continue
 
         limits = joint_limits_for_ragdoll_bone(bone_name)
+        # Havok ragdoll convention (matches the shipped .hkx): body A is the
+        # CHILD (constrained body) with pivot_a at its own joint origin, body B
+        # is the PARENT with pivot_b offset into the parent frame. Emitting them
+        # the other way round pairs pivot_a/pivot_b with the wrong bodies and the
+        # ragdoll joints come out broken.
         constraint = {
             "name": bone_name,
-            "body_a_index": parent_idx,
-            "body_b_index": child_idx,
+            "body_a_index": child_idx,
+            "body_b_index": parent_idx,
             "constraint_type": "ragdoll",
             "pivot_a": [0.0, 0.0, 0.1],
             "pivot_b": [0.0, 0.0, 0.0],

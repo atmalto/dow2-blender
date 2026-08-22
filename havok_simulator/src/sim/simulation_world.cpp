@@ -18,12 +18,17 @@
 #include <Physics/Collide/Query/CastUtil/hkpWorldRayCastOutput.h>
 #include <Physics/Collide/Shape/Convex/Box/hkpBoxShape.h>
 #include <Physics/Collide/Shape/Convex/Capsule/hkpCapsuleShape.h>
+#include <Physics/Collide/Shape/Convex/ConvexTransform/hkpConvexTransformShape.h>
+#include <Physics/Collide/Shape/Convex/ConvexTranslate/hkpConvexTranslateShape.h>
 #include <Physics/Collide/Shape/Convex/ConvexVertices/hkpConvexVerticesShape.h>
 #include <Physics/Collide/Shape/Convex/Sphere/hkpSphereShape.h>
+#include <Physics/Collide/Shape/Misc/Transform/hkpTransformShape.h>
+#include <Physics/Collide/Shape/hkpShape.h>
 #include <Physics/Collide/Shape/hkpShapeType.h>
 #include <Physics/Dynamics/Entity/hkpRigidBody.h>
 #include <Physics/Dynamics/World/hkpWorld.h>
 #include <Physics/Dynamics/World/hkpWorldObject.h>
+#include <Common/Base/Types/Geometry/Aabb/hkAabb.h>
 #include <Physics/Internal/PreProcess/ConvexHull/hkpGeometryUtility.h>
 #include <Physics/Utilities/Dynamics/Inertia/hkpInertiaTensorComputer.h>
 
@@ -41,6 +46,69 @@ namespace
     float degrees_to_radians(float value)
     {
         return value * (kPi / 180.0f);
+    }
+
+    const hkpShape* resolve_leaf_shape(const hkpShape* shape)
+    {
+        while (shape)
+        {
+            switch (shape->getType())
+            {
+            case HK_SHAPE_CONVEX_TRANSLATE:
+                shape = static_cast<const hkpConvexTranslateShape*>(shape)->getChildShape();
+                break;
+            case HK_SHAPE_CONVEX_TRANSFORM:
+                shape = static_cast<const hkpConvexTransformShape*>(shape)->getChildShape();
+                break;
+            case HK_SHAPE_TRANSFORM:
+                shape = static_cast<const hkpTransformShape*>(shape)->getChildShape();
+                break;
+            default:
+                return shape;
+            }
+        }
+        return shape;
+    }
+
+    // Same as resolve_leaf_shape, but also accumulates the wrapper's local
+    // translation (in the rigid body's local frame) so callers can offset the
+    // render position to the shape centre. Ragdoll primitives ship wrapped in a
+    // convex-translate purely to offset them from the body origin; without this
+    // the shipped original renders each wrapped body at the body origin instead
+    // of where the collision shape actually sits.
+    const hkpShape* resolve_leaf_shape(const hkpShape* shape, hkVector4& local_offset)
+    {
+        local_offset.setZero4();
+        while (shape)
+        {
+            switch (shape->getType())
+            {
+            case HK_SHAPE_CONVEX_TRANSLATE:
+                {
+                    const hkpConvexTranslateShape* translate = static_cast<const hkpConvexTranslateShape*>(shape);
+                    local_offset.add4(translate->getTranslation());
+                    shape = translate->getChildShape();
+                }
+                break;
+            case HK_SHAPE_CONVEX_TRANSFORM:
+                {
+                    const hkpConvexTransformShape* transform = static_cast<const hkpConvexTransformShape*>(shape);
+                    local_offset.add4(transform->getTransform().getTranslation());
+                    shape = transform->getChildShape();
+                }
+                break;
+            case HK_SHAPE_TRANSFORM:
+                {
+                    const hkpTransformShape* transform = static_cast<const hkpTransformShape*>(shape);
+                    local_offset.add4(transform->getTransform().getTranslation());
+                    shape = transform->getChildShape();
+                }
+                break;
+            default:
+                return shape;
+            }
+        }
+        return shape;
     }
 
     float max_abs_component(float a, float b)
@@ -633,7 +701,20 @@ void SimulationWorld::sync_render_state()
 {
     for (std::size_t body_index = 0; body_index < m_runtime_bodies.size(); ++body_index)
     {
-        fill_render_transform(m_runtime_bodies[body_index].body, m_render_bodies[m_runtime_bodies[body_index].render_index]);
+        const RuntimeBodyBinding& binding = m_runtime_bodies[body_index];
+        BodyRenderState& render_state = m_render_bodies[binding.render_index];
+        fill_render_transform(binding.body, render_state);
+
+        if (binding.local_offset[0] != 0.0f || binding.local_offset[1] != 0.0f || binding.local_offset[2] != 0.0f)
+        {
+            hkVector4 offset;
+            hkVector4 world_offset;
+            offset.set(binding.local_offset[0], binding.local_offset[1], binding.local_offset[2]);
+            world_offset.setRotatedDir(binding.body->getRotation(), offset);
+            render_state.position[0] += world_offset(0);
+            render_state.position[1] += world_offset(1);
+            render_state.position[2] += world_offset(2);
+        }
     }
 }
 
@@ -762,6 +843,19 @@ void SimulationWorld::apply_continuous_force_entities(const SceneDocument& scene
 
     for (std::size_t force_index = 0; force_index < forces.size(); ++force_index)
     {
+        const ForceSpec& spec = forces[force_index].force_spec;
+
+        if (!spec.active)
+        {
+            continue;
+        }
+
+        if (spec.radius > 0.0f)
+        {
+            apply_cylinder_force_entity(spec, ragdoll_runtimes);
+            continue;
+        }
+
         hkpRigidBody* rigid_body = 0;
         float hit_point[3] = { 0.0f, 0.0f, 0.0f };
         float direction[3] = { 0.0f, 0.0f, 0.0f };
@@ -770,19 +864,14 @@ void SimulationWorld::apply_continuous_force_entities(const SceneDocument& scene
         hkVector4 force;
         hkVector4 point;
 
-        if (!forces[force_index].force_spec.active)
+        if (!find_force_target(ragdoll_runtimes, spec, &rigid_body, hit_point, direction, 0))
         {
             continue;
         }
 
-        if (!find_force_target(ragdoll_runtimes, forces[force_index].force_spec, &rigid_body, hit_point, direction, 0))
-        {
-            continue;
-        }
-
-        signed_strength = forces[force_index].force_spec.mode == 1
-            ? -forces[force_index].force_spec.strength
-            : forces[force_index].force_spec.strength;
+        signed_strength = spec.mode == 1
+            ? -spec.strength
+            : spec.strength;
 
         owning_ragdoll = find_ragdoll_runtime_owning_body(ragdoll_runtimes, rigid_body);
         if (owning_ragdoll)
@@ -797,6 +886,119 @@ void SimulationWorld::apply_continuous_force_entities(const SceneDocument& scene
         rigid_body->applyForce(m_timestep, force, point);
         m_world->unmarkForWrite();
     }
+}
+
+void SimulationWorld::apply_cylinder_force_entity(const ForceSpec& spec, const std::vector<RagdollRuntime*>& ragdoll_runtimes)
+{
+    if (!m_world)
+    {
+        return;
+    }
+
+    const hkQuaternion rotation = make_quaternion_from_euler_degrees(
+        spec.rotation_degrees[0],
+        spec.rotation_degrees[1],
+        spec.rotation_degrees[2]);
+    const float local_forward[3] = { 0.0f, 0.0f, -1.0f };
+    float direction[3] = { 0.0f, 0.0f, 0.0f };
+    rotate_vector_by_quaternion(rotation, local_forward, direction);
+
+    const float dir_length = std::sqrt(
+        direction[0] * direction[0] +
+        direction[1] * direction[1] +
+        direction[2] * direction[2]);
+    if (dir_length < 1.0e-4f)
+    {
+        return;
+    }
+    direction[0] /= dir_length;
+    direction[1] /= dir_length;
+    direction[2] /= dir_length;
+
+    const float beam_length = 200.0f;
+    const float radius = spec.radius;
+    const float signed_strength = spec.mode == 1 ? -spec.strength : spec.strength;
+
+    // First pass: collect every dynamic body whose shape overlaps the beam
+    // cylinder and release any ragdoll it belongs to (release() must run outside
+    // the world write lock, matching the single-ray path).
+    std::vector<hkpRigidBody*> targets;
+    for (std::size_t body_index = 0; body_index < m_runtime_bodies.size(); ++body_index)
+    {
+        hkpRigidBody* body = m_runtime_bodies[body_index].body;
+        if (!body || body->getMotionType() == hkpMotion::MOTION_FIXED)
+        {
+            continue;
+        }
+
+        // Treat the body as its bounding sphere so a thin beam that merely grazes
+        // (rather than piercing the exact center of) the collidable still counts.
+        // Overlap condition: perpendicular distance <= beam radius + body radius.
+        float body_radius = 0.0f;
+        const hkpShape* shape = body->getCollidable() ? body->getCollidable()->getShape() : 0;
+        if (shape)
+        {
+            hkAabb aabb;
+            shape->getAabb(body->getTransform(), 0.0f, aabb);
+            const float half_x = (aabb.m_max(0) - aabb.m_min(0)) * 0.5f;
+            const float half_y = (aabb.m_max(1) - aabb.m_min(1)) * 0.5f;
+            const float half_z = (aabb.m_max(2) - aabb.m_min(2)) * 0.5f;
+            body_radius = std::sqrt(half_x * half_x + half_y * half_y + half_z * half_z);
+        }
+        const float reach = radius + body_radius;
+        const float reach_squared = reach * reach;
+
+        const hkVector4& body_position = body->getPosition();
+        const float offset[3] = {
+            body_position(0) - spec.position[0],
+            body_position(1) - spec.position[1],
+            body_position(2) - spec.position[2]
+        };
+
+        const float projection = offset[0] * direction[0] + offset[1] * direction[1] + offset[2] * direction[2];
+        if (projection < -body_radius || projection > beam_length + body_radius)
+        {
+            continue;
+        }
+
+        const float perpendicular[3] = {
+            offset[0] - direction[0] * projection,
+            offset[1] - direction[1] * projection,
+            offset[2] - direction[2] * projection
+        };
+        const float perpendicular_distance_squared =
+            perpendicular[0] * perpendicular[0] +
+            perpendicular[1] * perpendicular[1] +
+            perpendicular[2] * perpendicular[2];
+        if (perpendicular_distance_squared > reach_squared)
+        {
+            continue;
+        }
+
+        RagdollRuntime* owning_ragdoll = find_ragdoll_runtime_owning_body(ragdoll_runtimes, body);
+        if (owning_ragdoll)
+        {
+            owning_ragdoll->release();
+        }
+        targets.push_back(body);
+    }
+
+    if (targets.empty())
+    {
+        return;
+    }
+
+    hkVector4 force;
+    force.set(direction[0] * signed_strength, direction[1] * signed_strength, direction[2] * signed_strength);
+
+    m_world->markForWrite();
+    for (std::size_t target_index = 0; target_index < targets.size(); ++target_index)
+    {
+        // Apply at the center of mass so the whole cylinder pushes bodies evenly
+        // without imparting artificial spin.
+        targets[target_index]->applyForce(m_timestep, force);
+    }
+    m_world->unmarkForWrite();
 }
 
 bool SimulationWorld::apply_entity_runtime_position(
@@ -987,6 +1189,35 @@ bool SimulationWorld::apply_entity_runtime_scale(
     SpawnedObjectSpec preview_spec;
     BodyRenderState preview_state;
 
+    // Forces have no geometry: the scale gesture drives their cylinder radius,
+    // so we rebuild the arrow gizmo with the previewed radius (= scale[0]).
+    if (kind == SceneEntityKindForce)
+    {
+        const ForceSceneEntity* force = find_force_entity(scene_document, id);
+        ForceSpec force_preview;
+        const float min_radius = 0.05f;
+
+        if (!force)
+        {
+            return false;
+        }
+
+        force_preview = force->force_spec;
+        force_preview.radius = scale[0] < min_radius ? min_radius : scale[0];
+
+        for (std::size_t body_index = 0; body_index < m_render_bodies.size(); ++body_index)
+        {
+            BodyRenderState& render_state = m_render_bodies[body_index];
+            if (render_state.entity_id == id && render_state.entity_kind == kind)
+            {
+                apply_force_spec_to_render_state(force_preview, &render_state);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     if (kind != SceneEntityKindPhysicsObject)
     {
         return false;
@@ -1104,13 +1335,17 @@ BodyRenderState SimulationWorld::build_force_render_state(const ForceSpec& spec,
         spec.rotation_degrees[2]);
 
     state.shape_type = BodyRenderState::ShapeArrow;
-    set_default_render_fields(state, false, false, is_preview);
+    set_default_render_fields(state, false, true, is_preview);
     state.position[0] = spec.position[0];
     state.position[1] = spec.position[1];
     state.position[2] = spec.position[2];
     copy_quaternion(rotation, state.rotation);
-    state.half_extents[0] = 4.0f;
-    state.half_extents[1] = spec.strength * 0.01f;
+    // half_extents encode the arrow gizmo: [0] beam length, [1] cylinder radius,
+    // [2] legacy reach. A positive radius draws a solid volume cylinder matching
+    // the physics field; radius <= 0 keeps a slim legacy beam.
+    const float visual_radius = spec.radius > 0.0f ? spec.radius : 0.08f;
+    state.half_extents[0] = spec.radius > 0.0f ? (visual_radius * 4.0f + 2.0f) : 4.0f;
+    state.half_extents[1] = visual_radius;
     state.half_extents[2] = 120.0f;
 
     if (spec.mode == 1)
@@ -1198,6 +1433,13 @@ void SimulationWorld::add_loaded_ragdolls(
                 continue;
             }
 
+            // Ragdoll primitives are sometimes wrapped in a convex-translate/transform
+            // (an origin offset). Unwrap to the leaf sphere/box/capsule so the body is
+            // still counted and rendered instead of being dropped, and capture the
+            // offset so the render position lands on the shape centre.
+            hkVector4 local_offset;
+            shape = resolve_leaf_shape(shape, local_offset);
+
             switch (shape->getType())
             {
             case HK_SHAPE_BOX:
@@ -1224,6 +1466,9 @@ void SimulationWorld::add_loaded_ragdolls(
             }
 
             add_render_body(ragdoll->record.id, SceneEntityKindRagdoll, rigid_body, state, selected);
+            m_runtime_bodies.back().local_offset[0] = local_offset(0);
+            m_runtime_bodies.back().local_offset[1] = local_offset(1);
+            m_runtime_bodies.back().local_offset[2] = local_offset(2);
             ++runtime_entity.runtime_body_count;
             ++runtime_entity.render_body_count;
         }
@@ -1279,6 +1524,9 @@ void SimulationWorld::add_render_body(
     binding.entity_kind = entity_kind;
     binding.body = body;
     binding.render_index = render_index;
+    binding.local_offset[0] = 0.0f;
+    binding.local_offset[1] = 0.0f;
+    binding.local_offset[2] = 0.0f;
     m_runtime_body_lookup[body] = m_runtime_bodies.size();
     m_runtime_bodies.push_back(binding);
 }

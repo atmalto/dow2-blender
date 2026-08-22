@@ -47,6 +47,11 @@ namespace ragdoll_io
 		float angularDamping;
 		int collisionFilterInfo;
 		int qualityType;
+		// Optional local-space offset of the collision shape from the body origin.
+		// Non-zero for bodies whose primitive is offset from the joint (shipped as
+		// a convex-translate wrapper). Keeps the joint frame + mass centre at the
+		// body origin while placing the collision shape at the offset.
+		float shapeOffset[3];
 	};
 
 	struct RawConstraint

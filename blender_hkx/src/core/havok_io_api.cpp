@@ -21,6 +21,8 @@
 #include "json_physics_output.h"
 #include "physics_scene_builder.h"
 #include "json_ragdoll_input.h"
+#include "json_ragdoll_output.h"
+#include "..\ragdoll\hkx_451r_reader.h"
 #include "..\ragdoll\hkx_451_writer.h"
 #include "ragdoll_scene_builder.h"
 #include "hkanim_packer.h"
@@ -417,12 +419,31 @@ extern "C" HAVOK_IO_API int havok_io_ragdoll_read(
 	char* messageBuffer,
 	int messageBufferSize)
 {
-	(void)inputHkxPath;
-	(void)outputJsonPath;
-	return notImplemented(
-		"Ragdoll HKX read is not implemented in the centralized DLL yet",
-		messageBuffer,
-		messageBufferSize);
+	if (!validatePaths(inputHkxPath, outputJsonPath))
+	{
+		return fail("Ragdoll read requires input HKX and output JSON paths", messageBuffer, messageBufferSize);
+	}
+
+	HavokRuntime runtime;
+	int status = initializeRuntime(runtime, messageBuffer, messageBufferSize);
+	if (status != HAVOK_IO_STATUS_OK)
+	{
+		return status;
+	}
+
+	ragdoll_io::RawRagdollData rawData;
+	if (!readRagdollPackfile(inputHkxPath, rawData))
+	{
+		return fail("Failed to read ragdoll HKX", messageBuffer, messageBufferSize);
+	}
+
+	if (!writeRagdollJson(outputJsonPath, rawData))
+	{
+		return fail("Failed to write ragdoll JSON", messageBuffer, messageBufferSize);
+	}
+
+	setMessage(messageBuffer, messageBufferSize, "Ragdoll JSON written successfully");
+	return HAVOK_IO_STATUS_OK;
 }
 
 extern "C" HAVOK_IO_API int havok_io_hkanim_pack(

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import os
+
 import bpy
-from bpy.props import EnumProperty
+from bpy.props import EnumProperty, StringProperty
+from bpy_extras.io_utils import ImportHelper
 from bpy.types import Operator
 
 from .. import export_ragdoll_hkx
@@ -16,12 +19,136 @@ from ..authoring import (
     resolve_ragdoll_body_object,
     resolve_selected_ragdoll_bones,
 )
+from ..importer import load_ragdoll_scene
+from ..scene_importer import RagdollImporter
 from .common import (
     _resolve_active_armature,
     _resolve_active_ragdoll_skeleton,
     _resolve_export_path,
     _resolve_selected_source_ragdoll_bone_order,
 )
+from ...utils import set_file_browser_start
+
+
+def _resolve_existing_import_path(raw_path: str, label: str, expected_extensions: tuple[str, ...]) -> str:
+    value = str(raw_path or "").strip()
+    if not value:
+        raise RuntimeError(f"Choose a {label} file first")
+
+    path = os.path.abspath(bpy.path.abspath(value))
+    if not os.path.isfile(path):
+        raise RuntimeError(f"{label.capitalize()} file not found: {path}")
+
+    extension = os.path.splitext(path)[1].lower()
+    if extension not in expected_extensions:
+        expected = " or ".join(expected_extensions)
+        raise RuntimeError(f"{label.capitalize()} file must use {expected}")
+
+    return path
+
+
+class DOW2_OT_pick_ragdoll_import_path(Operator, ImportHelper):
+    """Choose a ragdoll HKX file for import"""
+
+    bl_idname = "dow2.pick_ragdoll_import_path"
+    bl_label = "Choose Ragdoll HKX"
+    bl_options = {"REGISTER"}
+
+    filename_ext = ".hkx"
+    filter_glob: StringProperty(default="*.hkx", options={"HIDDEN"})
+
+    def invoke(self, context, event):
+        settings = context.scene.dow2_ragdoll_settings
+        self.filepath = str(settings.ragdoll_import_path or "")
+        set_file_browser_start(self, context)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        context.scene.dow2_ragdoll_settings.ragdoll_import_path = self.filepath
+        return {"FINISHED"}
+
+
+class DOW2_OT_pick_ragdoll_model_path(Operator, ImportHelper):
+    """Choose the companion DoW2 model file for ragdoll import"""
+
+    bl_idname = "dow2.pick_ragdoll_model_path"
+    bl_label = "Choose Companion Model"
+    bl_options = {"REGISTER"}
+
+    filename_ext = ".model"
+    filter_glob: StringProperty(default="*.model", options={"HIDDEN"})
+
+    def invoke(self, context, event):
+        settings = context.scene.dow2_ragdoll_settings
+        self.filepath = str(settings.ragdoll_model_path or "")
+        set_file_browser_start(self, context)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        context.scene.dow2_ragdoll_settings.ragdoll_model_path = self.filepath
+        return {"FINISHED"}
+
+
+class DOW2_OT_import_ragdoll_hkx(Operator):
+    """Import a Havok ragdoll HKX and build normal authored ragdoll scene state"""
+
+    bl_idname = "dow2.import_ragdoll_hkx"
+    bl_label = "Import Ragdoll HKX"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and context.scene is not None
+
+    def execute(self, context):
+        settings = context.scene.dow2_ragdoll_settings
+
+        try:
+            ragdoll_path = _resolve_existing_import_path(
+                settings.ragdoll_import_path,
+                "ragdoll HKX",
+                (".hkx",),
+            )
+            model_path = None
+            if (settings.ragdoll_model_path or "").strip():
+                model_path = _resolve_existing_import_path(
+                    settings.ragdoll_model_path,
+                    "companion model",
+                    (".model",),
+                )
+            scene_data = load_ragdoll_scene(ragdoll_path)
+            importer = RagdollImporter()
+            target_name = (settings.ragdoll_name or "").strip() or None
+            skeleton_object = importer.import_scene(
+                context,
+                ragdoll_path,
+                model_path=model_path,
+                ragdoll_name=target_name,
+            )
+        except Exception as exc:
+            self.report({"ERROR"}, f"Ragdoll import failed: {exc}")
+            return {"CANCELLED"}
+
+        settings.ragdoll_last_import_name = skeleton_object.name
+        settings.ragdoll_last_import_collection = (
+            skeleton_object.users_collection[0].name if skeleton_object.users_collection else ""
+        )
+        settings.ragdoll_last_import_source_format = str(scene_data.source_format or "").upper()
+        settings.ragdoll_last_import_body_count = len(scene_data.rigid_bodies)
+        settings.ragdoll_last_import_constraint_count = len(scene_data.constraints)
+
+        self.report(
+            {"INFO"},
+            (
+                f"Imported ragdoll {skeleton_object.name}: "
+                f"bones={len(scene_data.ragdoll_skeleton.bones)}, "
+                f"bodies={len(scene_data.rigid_bodies)}, "
+                f"constraints={len(scene_data.constraints)}"
+            ),
+        )
+        return {"FINISHED"}
 
 
 class DOW2_OT_create_ragdoll_skeleton(Operator):

@@ -10,6 +10,7 @@ from ...utils import link_object_to_collection
 from .constants import (
     RAGDOLL_BODY_HALF_EXTENTS_PROP,
     RAGDOLL_BODY_HEIGHT_PROP,
+    RAGDOLL_BODY_JOINT_ORIGIN_PROP,
     RAGDOLL_BODY_LENGTH_PROP,
     RAGDOLL_BODY_PROP,
     RAGDOLL_BODY_RADIUS_PROP,
@@ -35,7 +36,30 @@ from .queries import is_ragdoll_body_object
 
 _BODY_SYNC_STATE: dict[int, dict[str, object]] = {}
 _BODY_SYNC_IN_PROGRESS = False
+_BODY_SYNC_SUSPENDED = 0
 _BODY_SYNC_TIMER_INTERVAL = 0.05
+
+
+class suspend_body_sync:
+    """Context manager that disables the live capsule body-sync.
+
+    The importer places bodies at their authoritative Havok joint origins with
+    asymmetric capsule vertices. Creating those meshes/handles triggers depsgraph
+    updates that would otherwise fire the sync mid-import and recenter the bodies
+    before their joint-origin flag is set. Suspending the sync for the duration of
+    the import keeps the imported transforms intact.
+    """
+
+    def __enter__(self) -> "suspend_body_sync":
+        global _BODY_SYNC_SUSPENDED
+        _BODY_SYNC_SUSPENDED += 1
+        return self
+
+    def __exit__(self, *_exc) -> bool:
+        global _BODY_SYNC_SUSPENDED
+        if _BODY_SYNC_SUSPENDED > 0:
+            _BODY_SYNC_SUSPENDED -= 1
+        return False
 
 
 def _capsule_handle_name(body_object: bpy.types.Object, endpoint: str) -> str:
@@ -170,18 +194,32 @@ def _sync_capsule_body(
     else:
         base_vertex_a = handle_vertex_a if handle_vertex_a is not None else prop_vertex_a
         base_vertex_b = handle_vertex_b if handle_vertex_b is not None else prop_vertex_b
-        center = (Vector(base_vertex_a) + Vector(base_vertex_b)) * 0.5
-        axis = Vector(base_vertex_b) - Vector(base_vertex_a)
-        if axis.length < 0.001:
-            axis = Vector((0.0, 1.0, 0.0))
+        if dims_changed:
+            # The user changed the radius/length dimensions, so re-derive the
+            # capsule segment endpoints from the new length about the existing
+            # centre/axis.
+            center = (Vector(base_vertex_a) + Vector(base_vertex_b)) * 0.5
+            axis = Vector(base_vertex_b) - Vector(base_vertex_a)
+            if axis.length < 0.001:
+                axis = Vector((0.0, 1.0, 0.0))
+            else:
+                axis.normalize()
+            segment_vertex_a, segment_vertex_b = _capsule_segment_vertices(length, radius)
+            vertex_a = list(center + (axis * float(segment_vertex_a[1])))
+            vertex_b = list(center + (axis * float(segment_vertex_b[1])))
         else:
-            axis.normalize()
-        segment_vertex_a, segment_vertex_b = _capsule_segment_vertices(length, radius)
-        vertex_a = list(center + (axis * float(segment_vertex_a[1])))
-        vertex_b = list(center + (axis * float(segment_vertex_b[1])))
+            # Nothing about the capsule actually changed (e.g. a forced refresh
+            # or an unrelated depsgraph tick). Preserve the authoritative stored
+            # endpoints verbatim — recomputing them through
+            # _capsule_segment_vertices insets each end by the radius and, on
+            # imported bodies, silently shrinks the exported Havok capsule.
+            vertex_a = list(base_vertex_a)
+            vertex_b = list(base_vertex_b)
+            length = max((Vector(vertex_b) - Vector(vertex_a)).length, 0.001)
 
     midpoint = (Vector(vertex_a) + Vector(vertex_b)) * 0.5
-    if midpoint.length > 0.000001:
+    joint_anchored = bool(body_object.get(RAGDOLL_BODY_JOINT_ORIGIN_PROP, False))
+    if midpoint.length > 0.000001 and not joint_anchored:
         body_object.matrix_world.translation = body_object.matrix_world.translation + (body_object.matrix_world.to_quaternion() @ midpoint)
         vertex_a = list(Vector(vertex_a) - midpoint)
         vertex_b = list(Vector(vertex_b) - midpoint)
@@ -298,7 +336,7 @@ def _sync_ragdoll_body_object(
 def sync_ragdoll_body_object(body_object: bpy.types.Object, force: bool = False) -> bool:
     global _BODY_SYNC_IN_PROGRESS
 
-    if _BODY_SYNC_IN_PROGRESS or not is_ragdoll_body_object(body_object):
+    if _BODY_SYNC_IN_PROGRESS or _BODY_SYNC_SUSPENDED or not is_ragdoll_body_object(body_object):
         return False
 
     _BODY_SYNC_IN_PROGRESS = True
@@ -316,7 +354,7 @@ def sync_ragdoll_body_object(body_object: bpy.types.Object, force: bool = False)
 def sync_ragdoll_body_objects(force: bool = False) -> int:
     global _BODY_SYNC_IN_PROGRESS
 
-    if _BODY_SYNC_IN_PROGRESS:
+    if _BODY_SYNC_IN_PROGRESS or _BODY_SYNC_SUSPENDED:
         return 0
 
     objects = getattr(bpy.data, "objects", None)

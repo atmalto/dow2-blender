@@ -131,6 +131,7 @@ private:
     QLabel* m_rotation_y_value;
     QLabel* m_rotation_z_value;
     QDoubleSpinBox* m_strength_spin;
+    QDoubleSpinBox* m_radius_spin;
     SimulationController::ForceSpec m_original_spec;
     bool m_is_edit_session;
     SceneEntityId m_edit_entity_id;

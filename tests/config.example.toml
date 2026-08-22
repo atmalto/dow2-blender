@@ -38,13 +38,16 @@ default = "small"
 models = 100
 animations = 5
 physics = 10
+ragdolls = 5
 
 [scope.presets.medium]
 models = 300
 animations = 10
 physics = 50
+ragdolls = 15
 
 [scope.presets.large]
 models = 500
 animations = 20
 physics = 100
+ragdolls = 55

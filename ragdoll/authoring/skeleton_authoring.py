@@ -5,10 +5,18 @@ from typing import Sequence
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
+from ...model.skeleton_space import (
+    apply_bone_axis_adapter,
+    armature_uses_bone_axis_adapter,
+    mark_armature_bone_axis_adapter,
+)
 from ...utils import dx_to_blender_matrix, link_object_to_collection
 from ..skeleton import create_ragdoll_skeleton_from_armature
 from .collections import ensure_child_collection, ragdoll_collection_name, remove_collection_tree
 from .constants import (
+    RAGDOLL_ANIMATION_PREFIX,
+    RAGDOLL_ANIMATION_SKELETON_PROP,
+    RAGDOLL_BONE_ORDER_PROP,
     RAGDOLL_LOCAL_POS_PROP,
     RAGDOLL_LOCAL_ROT_PROP,
     RAGDOLL_LOCAL_SCALE_PROP,
@@ -34,12 +42,111 @@ def _matrix_from_raw_transform(transform: dict[str, Sequence[float]]) -> Matrix:
 
 
 def _resolve_bone_length(source_armature: bpy.types.Object, source_bone_name: str | None) -> float:
-    if not source_bone_name:
-        return 0.1
-    source_bone = source_armature.data.bones.get(source_bone_name)
+    source_bone = _find_source_bone(source_armature, source_bone_name)
     if source_bone is None:
         return 0.1
     return max(source_bone.length, 0.05)
+
+
+def _find_source_bone(
+    source_armature: bpy.types.Object,
+    source_bone_name: str | None,
+) -> bpy.types.Bone | None:
+    if not source_bone_name:
+        return None
+    source_bone = source_armature.data.bones.get(source_bone_name)
+    if source_bone is not None:
+        return source_bone
+
+    source_bones_by_lower = {
+        bone.name.lower(): bone
+        for bone in source_armature.data.bones
+    }
+    return source_bones_by_lower.get(str(source_bone_name).lower())
+
+
+def _inferred_ragdoll_payload(
+    source_armature: bpy.types.Object,
+    ragdoll_bone_order: list[str] | None,
+) -> tuple[dict[str, object], dict[str, str]]:
+    animation_skeleton, ragdoll_skeleton, _bone_mappings, ragdoll_bone_map = create_ragdoll_skeleton_from_armature(
+        source_armature,
+        ragdoll_bone_order=ragdoll_bone_order,
+    )
+    del animation_skeleton
+    return ragdoll_skeleton, ragdoll_bone_map
+
+
+def animation_collection_name(ragdoll_name: str) -> str:
+    cleaned = (ragdoll_name or "ragdoll").strip() or "ragdoll"
+    return f"{RAGDOLL_ANIMATION_PREFIX}{cleaned}"
+
+
+def create_scene_animation_skeleton(
+    context: bpy.types.Context,
+    ragdoll_name: str,
+    animation_skeleton_data: dict[str, object],
+) -> bpy.types.Object:
+    """Build an explicit, editable armature for the ragdoll's animation skeleton
+    straight from the HKX data (no dependency on a .model armature)."""
+    collection_name = animation_collection_name(ragdoll_name)
+    existing_collection = context.scene.collection.children.get(collection_name)
+    if existing_collection is not None:
+        remove_collection_tree(existing_collection)
+    animation_collection = ensure_child_collection(context.scene.collection, collection_name)
+
+    bones = list(animation_skeleton_data["bones"])
+    parent_indices = list(animation_skeleton_data["parent_indices"])
+    reference_pose = list(animation_skeleton_data["reference_pose"])
+
+    armature_data = bpy.data.armatures.new(collection_name)
+    armature_obj = bpy.data.objects.new(collection_name, armature_data)
+    armature_obj[RAGDOLL_ANIMATION_SKELETON_PROP] = True
+    link_object_to_collection(armature_obj, animation_collection)
+
+    prior_active = context.view_layer.objects.active
+    if prior_active is not None and context.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+    context.view_layer.objects.active = armature_obj
+    armature_obj.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+
+    edit_bones: list[bpy.types.EditBone] = []
+    world_matrices: list[Matrix] = []
+    for index, transform in enumerate(reference_pose):
+        local_matrix = _matrix_from_raw_transform(transform)
+        parent_index = parent_indices[index]
+        world_matrix = local_matrix if parent_index < 0 else world_matrices[parent_index] @ local_matrix
+        world_matrices.append(world_matrix)
+
+        edit_bone = armature_data.edit_bones.new(bones[index])
+        edit_bone.use_connect = False
+        if parent_index >= 0:
+            edit_bone.parent = edit_bones[parent_index]
+
+        head = world_matrix.to_translation()
+        y_axis = world_matrix.to_3x3() @ Vector((0.0, 1.0, 0.0))
+        z_axis = world_matrix.to_3x3() @ Vector((0.0, 0.0, 1.0))
+        if y_axis.length < 0.001:
+            y_axis = Vector((0.0, 1.0, 0.0))
+        edit_bone.head = head
+        edit_bone.tail = head + y_axis.normalized() * 0.1
+        if z_axis.length >= 0.001:
+            edit_bone.align_roll(z_axis)
+        edit_bones.append(edit_bone)
+
+    bpy.ops.object.mode_set(mode="OBJECT")
+    pose_by_name = dict(zip(bones, reference_pose))
+    for bone_name in bones:
+        bone = armature_data.bones.get(bone_name)
+        if bone is None:
+            continue
+        apply_reference_pose_to_bone(bone, pose_by_name[bone_name])
+
+    if prior_active is not None:
+        context.view_layer.objects.active = prior_active
+    return armature_obj
 
 
 def create_scene_ragdoll_skeleton(
@@ -47,6 +154,9 @@ def create_scene_ragdoll_skeleton(
     source_armature: bpy.types.Object,
     ragdoll_name: str,
     ragdoll_bone_order: list[str] | None = None,
+    ragdoll_skeleton_data: dict[str, object] | None = None,
+    ragdoll_bone_map: dict[str, str] | None = None,
+    prefer_reference_pose_display: bool = False,
 ) -> bpy.types.Object:
     collection_name = ragdoll_collection_name(ragdoll_name)
     existing_collection = context.scene.collection.children.get(collection_name)
@@ -54,17 +164,24 @@ def create_scene_ragdoll_skeleton(
         remove_collection_tree(existing_collection)
 
     ragdoll_collection = ensure_child_collection(context.scene.collection, collection_name)
-    animation_skeleton, ragdoll_skeleton, _bone_mappings, ragdoll_bone_map = create_ragdoll_skeleton_from_armature(
-        source_armature,
-        ragdoll_bone_order=ragdoll_bone_order,
-    )
-    del animation_skeleton
+    if ragdoll_skeleton_data is None:
+        ragdoll_skeleton, ragdoll_bone_map = _inferred_ragdoll_payload(
+            source_armature,
+            ragdoll_bone_order=ragdoll_bone_order,
+        )
+    else:
+        ragdoll_skeleton = ragdoll_skeleton_data
+        ragdoll_bone_map = dict(ragdoll_bone_map or {})
 
     armature_data = bpy.data.armatures.new(collection_name)
     armature_obj = bpy.data.objects.new(collection_name, armature_data)
     armature_obj.matrix_world = source_armature.matrix_world.copy()
     armature_obj[RAGDOLL_SKELETON_PROP] = True
     armature_obj[RAGDOLL_SOURCE_ARMATURE_PROP] = source_armature.name
+    armature_obj[RAGDOLL_BONE_ORDER_PROP] = list(ragdoll_skeleton["bones"])
+    use_bone_axis_adapter = armature_uses_bone_axis_adapter(source_armature)
+    if use_bone_axis_adapter:
+        mark_armature_bone_axis_adapter(armature_data)
     link_object_to_collection(armature_obj, ragdoll_collection)
 
     prior_active = context.view_layer.objects.active
@@ -77,26 +194,65 @@ def create_scene_ragdoll_skeleton(
 
     edit_bones: list[bpy.types.EditBone] = []
     world_matrices: list[Matrix] = []
+    reference_pose_indices: list[int] = []
+    display_roll_axes: list[Vector] = []
     for index, transform in enumerate(ragdoll_skeleton["reference_pose"]):
         local_matrix = _matrix_from_raw_transform(transform)
         parent_index = ragdoll_skeleton["parent_indices"][index]
         world_matrix = local_matrix if parent_index < 0 else world_matrices[parent_index] @ local_matrix
         world_matrices.append(world_matrix)
+        display_world_matrix = apply_bone_axis_adapter(world_matrix) if use_bone_axis_adapter else world_matrix
+        display_roll_axes.append(display_world_matrix.to_3x3() @ Vector((0.0, 0.0, 1.0)))
 
         bone_name = ragdoll_skeleton["bones"][index]
+        source_bone = _find_source_bone(source_armature, ragdoll_bone_map.get(bone_name))
         edit_bone = armature_data.edit_bones.new(bone_name)
         edit_bone.use_connect = False
         if parent_index >= 0:
             edit_bone.parent = edit_bones[parent_index]
-        edit_bone.matrix = world_matrix
-        head = world_matrix.to_translation()
-        length = _resolve_bone_length(source_armature, ragdoll_bone_map.get(bone_name))
-        tail_direction = world_matrix.to_3x3() @ Vector((0.0, length, 0.0))
-        if tail_direction.length < 0.001:
-            tail_direction = Vector((0.0, length, 0.0))
-        edit_bone.head = head
-        edit_bone.tail = head + tail_direction
+        if source_bone is not None and not prefer_reference_pose_display:
+            edit_bone.head = source_bone.head_local.copy()
+            edit_bone.tail = source_bone.tail_local.copy()
+            if (edit_bone.tail - edit_bone.head).length < 0.001:
+                edit_bone.tail = edit_bone.head + Vector((0.0, max(source_bone.length, 0.05), 0.0))
+            source_roll_axis = source_bone.matrix_local.to_3x3() @ Vector((0.0, 0.0, 1.0))
+            if source_roll_axis.length >= 0.001:
+                edit_bone.align_roll(source_roll_axis)
+        else:
+            edit_bone.matrix = display_world_matrix
+            head = display_world_matrix.to_translation()
+            length = _resolve_bone_length(source_armature, ragdoll_bone_map.get(bone_name))
+            tail_direction = display_world_matrix.to_3x3() @ Vector((0.0, length, 0.0))
+            if tail_direction.length < 0.001:
+                tail_direction = Vector((0.0, length, 0.0))
+            edit_bone.head = head
+            edit_bone.tail = head + tail_direction
+            reference_pose_indices.append(index)
         edit_bones.append(edit_bone)
+
+    # Second pass (reference-pose display only): point each display bone's tail at
+    # its primary child's head so the skeleton reads like the .model armature
+    # instead of following each bone's arbitrary Havok joint axis. Leaf bones keep
+    # the axis-derived tail from the first pass.
+    if reference_pose_indices:
+        children_by_parent: dict[int, list[int]] = {}
+        for child_index, parent_index in enumerate(ragdoll_skeleton["parent_indices"]):
+            if parent_index is not None and parent_index >= 0:
+                children_by_parent.setdefault(parent_index, []).append(child_index)
+        for index in reference_pose_indices:
+            child_indices = children_by_parent.get(index)
+            if not child_indices:
+                continue
+            branching_children = [child for child in child_indices if children_by_parent.get(child)]
+            primary_child = branching_children[0] if branching_children else child_indices[0]
+            edit_bone = edit_bones[index]
+            child_head = edit_bones[primary_child].head.copy()
+            if (child_head - edit_bone.head).length < 0.001:
+                continue
+            edit_bone.tail = child_head
+            roll_axis = display_roll_axes[index]
+            if roll_axis.length >= 0.001:
+                edit_bone.align_roll(roll_axis)
 
     bpy.ops.object.mode_set(mode="OBJECT")
     pose_by_name = dict(zip(ragdoll_skeleton["bones"], ragdoll_skeleton["reference_pose"]))

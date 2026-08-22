@@ -59,6 +59,10 @@ struct ForceSceneSpec
     float strength;
     int mode;
     bool active;
+    // Cylinder radius (meters) of the force volume. When > 0 the force is applied
+    // to every dynamic body inside the beam cylinder; when <= 0 it falls back to
+    // the legacy single-ray behavior (first body hit only).
+    float radius;
 };
 
 struct RagdollSceneSpec

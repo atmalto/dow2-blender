@@ -40,6 +40,13 @@ class PhysicsAsset:
     model_path: Path
 
 
+@dataclass(frozen=True)
+class RagdollAsset:
+    path: Path
+    category: str  # race/source bucket, e.g. 'race_chaos' | 'world_objects' | 'other'
+    model_path: Path
+
+
 def _art_root(data_root: Path) -> Path:
     return data_root / ART_SUBDIR
 
@@ -206,6 +213,74 @@ def find_physics(data_root: Path, limit: int | None = None) -> list[PhysicsAsset
 
     order = ["physics", "rubble"]
     interleaved: list[PhysicsAsset] = []
+    idx = 0
+    while any(buckets[category] for category in order):
+        category = order[idx % len(order)]
+        if buckets[category]:
+            interleaved.append(buckets[category].pop(0))
+        idx += 1
+
+    return interleaved if limit is None else interleaved[:limit]
+
+
+def _classify_ragdoll(data_root: Path, path: Path) -> str:
+    """Bucket a ragdoll by its top-level ``art`` source folder (race_* / world_objects)."""
+    rel_parts = [p.lower() for p in path.relative_to(_art_root(data_root)).parts]
+    for part in rel_parts:
+        if part.startswith("race_"):
+            return part
+    if "world_objects" in rel_parts:
+        return "world_objects"
+    return "other"
+
+
+def _preferred_model_for_ragdoll(path: Path) -> Path | None:
+    """Resolve the source ``.model`` for a ragdoll.
+
+    DoW2 ragdolls live at ``.../troops/<unit>/animations/<clip>/ragdoll.hkx`` and
+    the source skeleton is ``.../troops/<unit>/<unit>.model``. Walk up the
+    ancestors until a directory contains a ``.model``; prefer one whose stem
+    matches the unit directory name, else the first available.
+    """
+    for ancestor in path.parents:
+        models = sorted(ancestor.glob("*.model"))
+        if not models:
+            continue
+        named = ancestor / f"{ancestor.name}.model"
+        if named in models:
+            return named
+        return models[0]
+    return None
+
+
+def find_ragdolls(data_root: Path, limit: int | None = None) -> list[RagdollAsset]:
+    """Return ``ragdoll.hkx`` assets under ``art/`` paired with their source model.
+
+    Only ragdolls with a resolvable sibling/ancestor ``.model`` are returned.
+    Ordering interleaves by source race/world bucket so a small scope still
+    exercises different unit families deterministically.
+    """
+    art = _art_root(data_root)
+    if not art.is_dir():
+        return []
+
+    buckets: dict[str, list[RagdollAsset]] = {}
+    order: list[str] = []
+    for ragdoll_path in sorted(art.rglob("*.hkx")):
+        if ragdoll_path.name.lower() != "ragdoll.hkx":
+            continue
+        model_path = _preferred_model_for_ragdoll(ragdoll_path)
+        if model_path is None:
+            continue
+        category = _classify_ragdoll(data_root, ragdoll_path)
+        asset = RagdollAsset(path=ragdoll_path, category=category, model_path=model_path)
+        if category not in buckets:
+            buckets[category] = []
+            order.append(category)
+        buckets[category].append(asset)
+
+    order.sort()
+    interleaved: list[RagdollAsset] = []
     idx = 0
     while any(buckets[category] for category in order):
         category = order[idx % len(order)]

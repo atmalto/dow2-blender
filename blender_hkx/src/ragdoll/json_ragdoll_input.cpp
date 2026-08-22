@@ -328,6 +328,7 @@ namespace
 				body.angularDamping = 3.0f;
 				body.collisionFilterInfo = 65984;
 				body.qualityType = 4;
+				body.shapeOffset[0] = body.shapeOffset[1] = body.shapeOffset[2] = 0.0f;
 
 				const char* field = findKey(value, "name");
 				if (field && field < objectEnd) parseString(field, body.name);
@@ -343,6 +344,8 @@ namespace
 				if (field && field < objectEnd) parseFloatArray(field, body.vertexB, 3);
 				field = findKey(value, "half_extents");
 				if (field && field < objectEnd) parseFloatArray(field, body.halfExtents, 3);
+				field = findKey(value, "shape_offset");
+				if (field && field < objectEnd) parseFloatArray(field, body.shapeOffset, 3);
 				field = findKey(value, "mass");
 				if (field && field < objectEnd) parseNumber(field, body.mass);
 				field = findKey(value, "friction");

@@ -1,5 +1,7 @@
 #include "scene_document.h"
 
+#include <cmath>
+
 SceneDocument::SceneDocument()
     : m_next_entity_id(1)
 {
@@ -442,6 +444,11 @@ bool SceneDocument::begin_uniform_scale()
     m_uniform_scale_session.entity_id = m_selected_entity.id;
     m_uniform_scale_session.entity_kind = m_selected_entity.kind;
 
+    // Force radius lives in a tight 0-2 range, so scaling must feel far gentler
+    // than a rigid body. A sub-1 sensitivity dampens the drag exponent.
+    m_uniform_scale_session.sensitivity =
+        (m_selected_entity.kind == SceneEntityKindForce) ? 0.3f : 1.0f;
+
     if (!get_entity_scale(m_selected_entity.id, m_selected_entity.kind, m_uniform_scale_session.committed_scale))
     {
         cancel_uniform_scale();
@@ -458,15 +465,23 @@ bool SceneDocument::update_uniform_scale_preview(float scale_factor)
 {
     const float min_scale = 0.01f;
     int axis_index = 0;
+    float effective_factor = scale_factor;
 
     if (!m_uniform_scale_session.active || scale_factor <= 0.0f)
     {
         return false;
     }
 
+    // Dampen the drag response for gentler entities (e.g. force radius) by
+    // compressing the multiplicative factor towards 1.0 via its exponent.
+    if (m_uniform_scale_session.sensitivity != 1.0f)
+    {
+        effective_factor = std::pow(scale_factor, m_uniform_scale_session.sensitivity);
+    }
+
     for (axis_index = 0; axis_index < 3; ++axis_index)
     {
-        float scaled_value = m_uniform_scale_session.committed_scale[axis_index] * scale_factor;
+        float scaled_value = m_uniform_scale_session.committed_scale[axis_index] * effective_factor;
         if (scaled_value < min_scale)
         {
             scaled_value = min_scale;
@@ -711,6 +726,30 @@ bool SceneDocument::get_entity_scale(SceneEntityId id, SceneEntityKind kind, flo
 {
     std::size_t entity_index = 0;
 
+    if (kind == SceneEntityKindForce)
+    {
+        // A force has no geometric scale; we drive its cylinder radius instead.
+        // Legacy single-ray forces (radius <= 0) start from a small cylinder so
+        // the scale gesture has something meaningful to grow.
+        for (entity_index = 0; entity_index < m_forces.size(); ++entity_index)
+        {
+            if (m_forces[entity_index].record.id == id)
+            {
+                float radius = m_forces[entity_index].force_spec.radius;
+                if (radius <= 0.0f)
+                {
+                    radius = 0.5f;
+                }
+                scale[0] = radius;
+                scale[1] = radius;
+                scale[2] = radius;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     if (kind != SceneEntityKindPhysicsObject)
     {
         return false;
@@ -733,6 +772,27 @@ bool SceneDocument::get_entity_scale(SceneEntityId id, SceneEntityKind kind, flo
 bool SceneDocument::set_entity_scale(SceneEntityId id, SceneEntityKind kind, const float scale[3])
 {
     std::size_t entity_index = 0;
+
+    if (kind == SceneEntityKindForce)
+    {
+        const float min_radius = 0.05f;
+        float radius = scale[0];
+        if (radius < min_radius)
+        {
+            radius = min_radius;
+        }
+
+        for (entity_index = 0; entity_index < m_forces.size(); ++entity_index)
+        {
+            if (m_forces[entity_index].record.id == id)
+            {
+                m_forces[entity_index].force_spec.radius = radius;
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     if (kind != SceneEntityKindPhysicsObject)
     {
@@ -827,6 +887,21 @@ bool SceneDocument::is_entity_rotatable(SceneEntityId id, SceneEntityKind kind) 
 bool SceneDocument::is_entity_scalable(SceneEntityId id, SceneEntityKind kind) const
 {
     std::size_t entity_index = 0;
+
+    if (kind == SceneEntityKindForce)
+    {
+        // Forces are "scalable" only in the sense that the scale gesture drives
+        // their cylinder radius. Reuse the editable flag like objects do.
+        for (entity_index = 0; entity_index < m_forces.size(); ++entity_index)
+        {
+            if (m_forces[entity_index].record.id == id)
+            {
+                return m_forces[entity_index].record.editable;
+            }
+        }
+
+        return false;
+    }
 
     if (kind != SceneEntityKindPhysicsObject)
     {

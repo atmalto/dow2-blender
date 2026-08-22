@@ -33,7 +33,7 @@ set HAVOK_LIBS=hkBase.lib hkSerialize.lib hkCompat.lib hkaAnimation.lib hkaInter
 set CORE_SOURCES="src\core\havok_runtime.cpp" "src\core\havok_registry.cpp" "src\core\havok_io_api.cpp"
 set ANIMATION_SOURCES="src\animation\animation_scene_builder.cpp" "src\animation\hkx_451_reader.cpp" "src\animation\hkx_451_writer.cpp" "src\animation\json_animation_input.cpp" "src\animation\json_animation_output.cpp" "src\animation\mod_studio_animation_bridge.cpp"
 set PHYSICS_SOURCES="src\physics\hkx_451r_reader.cpp" "src\physics\hkx_55_writer.cpp" "src\physics\json_physics_input.cpp" "src\physics\json_physics_output.cpp" "src\physics\physics_scene_builder.cpp"
-set RAGDOLL_SOURCES="src\ragdoll\hkx_451_writer.cpp" "src\ragdoll\json_ragdoll_input.cpp" "src\ragdoll\ragdoll_scene_builder.cpp"
+set RAGDOLL_SOURCES="src\ragdoll\hkx_451_writer.cpp" "src\ragdoll\hkx_451r_reader.cpp" "src\ragdoll\json_ragdoll_input.cpp" "src\ragdoll\json_ragdoll_output.cpp" "src\ragdoll\ragdoll_scene_builder.cpp" "src\ragdoll\legacy_class_cloner.cpp" "src\ragdoll\ragdoll_legacy_motion.cpp"
 set HKANIM_SOURCES="src\hkanim\hkanim_packer.cpp" "src\hkanim\hkanim_unpacker.cpp"
 
 if not exist "%OBJ_ROOT%\core" mkdir "%OBJ_ROOT%\core"

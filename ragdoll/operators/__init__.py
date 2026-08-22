@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import bpy
 from .authoring import (
+    DOW2_OT_import_ragdoll_hkx,
+    DOW2_OT_pick_ragdoll_import_path,
+    DOW2_OT_pick_ragdoll_model_path,
     DOW2_OT_create_ragdoll_bodies,
     DOW2_OT_create_ragdoll_skeleton,
     DOW2_OT_export_ragdoll_hkx,
@@ -13,6 +16,9 @@ from .templates import DOW2_OT_apply_ragdoll_template_category
 
 
 classes = [
+    DOW2_OT_pick_ragdoll_import_path,
+    DOW2_OT_pick_ragdoll_model_path,
+    DOW2_OT_import_ragdoll_hkx,
     DOW2_OT_create_ragdoll_skeleton,
     DOW2_OT_create_ragdoll_bodies,
     DOW2_OT_apply_ragdoll_template_category,

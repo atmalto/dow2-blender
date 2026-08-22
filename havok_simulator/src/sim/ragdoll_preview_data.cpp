@@ -12,7 +12,10 @@
 
 #include <Physics/Collide/Shape/Convex/Box/hkpBoxShape.h>
 #include <Physics/Collide/Shape/Convex/Capsule/hkpCapsuleShape.h>
+#include <Physics/Collide/Shape/Convex/ConvexTransform/hkpConvexTransformShape.h>
+#include <Physics/Collide/Shape/Convex/ConvexTranslate/hkpConvexTranslateShape.h>
 #include <Physics/Collide/Shape/Convex/Sphere/hkpSphereShape.h>
+#include <Physics/Collide/Shape/Misc/Transform/hkpTransformShape.h>
 #include <Physics/Collide/Shape/hkpShapeType.h>
 #include <Physics/ConstraintSolver/Constraint/Atom/hkpConstraintAtom.h>
 #include <Physics/Dynamics/Constraint/Bilateral/LimitedHinge/hkpLimitedHingeConstraintData.h>
@@ -200,6 +203,28 @@ namespace
         return true;
     }
 
+    const hkpShape* resolve_leaf_shape(const hkpShape* shape)
+    {
+        while (shape)
+        {
+            switch (shape->getType())
+            {
+            case HK_SHAPE_CONVEX_TRANSLATE:
+                shape = static_cast<const hkpConvexTranslateShape*>(shape)->getChildShape();
+                break;
+            case HK_SHAPE_CONVEX_TRANSFORM:
+                shape = static_cast<const hkpConvexTransformShape*>(shape)->getChildShape();
+                break;
+            case HK_SHAPE_TRANSFORM:
+                shape = static_cast<const hkpTransformShape*>(shape)->getChildShape();
+                break;
+            default:
+                return shape;
+            }
+        }
+        return shape;
+    }
+
     RagdollPreviewBodyShapeType preview_shape_type_from_havok(hkpShapeType shape_type)
     {
         switch (shape_type)
@@ -220,6 +245,12 @@ namespace
         const hkpShape* shape = rigid_body.getCollidable()->getShape();
 
         if (!shape || !render_state)
+        {
+            return false;
+        }
+
+        shape = resolve_leaf_shape(shape);
+        if (!shape)
         {
             return false;
         }
@@ -357,7 +388,7 @@ bool build_ragdoll_preview_data(
 
         if (rigid_body)
         {
-            const hkpShape* shape = rigid_body->getCollidable()->getShape();
+            const hkpShape* shape = resolve_leaf_shape(rigid_body->getCollidable()->getShape());
             body.is_present = true;
             body.bone_index = bone_index;
             body.name = bone_name;

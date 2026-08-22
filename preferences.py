@@ -42,6 +42,12 @@ class DoW2ToolsPreferences(AddonPreferences):
         update=_save_preferences_update,
     )
 
+    ragdoll_import_settings_json: bpy.props.StringProperty(
+        default="",
+        options={'HIDDEN'},
+        update=_save_preferences_update,
+    )
+
     animation_export_settings_json: bpy.props.StringProperty(
         default="",
         options={'HIDDEN'},
