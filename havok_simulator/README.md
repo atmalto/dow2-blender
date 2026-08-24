@@ -1,12 +1,13 @@
 # Havok Simulator
 
-This is a Qt 4.8 + Havok 5.5 (VS2008) sand box app i wrote that i sued to importing Dawn of War II ragdoll and
-physics HKX files, dropping/pushing rigid bodies, and watching them simulate to validate blender import/export behavior. It is not a general-purpose Havok tool, but could be generalized, it does have a headless CLI mode that can be used to automate tests.
+This a Qt 4.8 + Havok 5.5 (VS2008) sand box app I wrote that I used to import Dawn of War II ragdoll and physics HKX files, dropping/pushing rigid bodies, and watching them simulate to validate blender import/export behavior. It is not a general-purpose Havok tool, but could be generalized, it does have a headless CLI mode that can be used to automate tests.
 
 There are two build targets that share the same engine core (`sim_core.pri`):
 
 - **`havok_simulator.exe`** — the interactive GUI app.
 - **`havok_sim_cli.exe`** — a headless, scriptable driver used by the test suite.
+
+The package is released in a separate zip with it's dedicated guide.
 
 ## GUI app
 

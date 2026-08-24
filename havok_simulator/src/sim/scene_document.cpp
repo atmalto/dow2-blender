@@ -461,10 +461,21 @@ bool SceneDocument::begin_uniform_scale()
     return true;
 }
 
+bool SceneDocument::set_uniform_scale_axis(SceneMoveAxis axis)
+{
+    if (!m_uniform_scale_session.active)
+    {
+        return false;
+    }
+
+    m_uniform_scale_session.axis = axis;
+    return true;
+}
+
 bool SceneDocument::update_uniform_scale_preview(float scale_factor)
 {
     const float min_scale = 0.01f;
-    int axis_index = 0;
+    int axis_index = -1;
     float effective_factor = scale_factor;
 
     if (!m_uniform_scale_session.active || scale_factor <= 0.0f)
@@ -477,6 +488,35 @@ bool SceneDocument::update_uniform_scale_preview(float scale_factor)
     if (m_uniform_scale_session.sensitivity != 1.0f)
     {
         effective_factor = std::pow(scale_factor, m_uniform_scale_session.sensitivity);
+    }
+
+    m_uniform_scale_session.preview_scale[0] = m_uniform_scale_session.committed_scale[0];
+    m_uniform_scale_session.preview_scale[1] = m_uniform_scale_session.committed_scale[1];
+    m_uniform_scale_session.preview_scale[2] = m_uniform_scale_session.committed_scale[2];
+
+    if (m_uniform_scale_session.axis == SceneMoveAxisX)
+    {
+        axis_index = 0;
+    }
+    else if (m_uniform_scale_session.axis == SceneMoveAxisY)
+    {
+        axis_index = 1;
+    }
+    else if (m_uniform_scale_session.axis == SceneMoveAxisZ)
+    {
+        axis_index = 2;
+    }
+
+    if (axis_index >= 0)
+    {
+        float scaled_value = m_uniform_scale_session.committed_scale[axis_index] * effective_factor;
+        if (scaled_value < min_scale)
+        {
+            scaled_value = min_scale;
+        }
+
+        m_uniform_scale_session.preview_scale[axis_index] = scaled_value;
+        return true;
     }
 
     for (axis_index = 0; axis_index < 3; ++axis_index)

@@ -30,6 +30,7 @@ _RUNTIME_MODULE_PATHS = [
     ".collision.exporter",
     ".physics",
     ".ragdoll.addon",
+    ".sync",
     ".ui.panels",
 ]
 

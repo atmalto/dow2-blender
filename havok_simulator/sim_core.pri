@@ -47,6 +47,11 @@ SOURCES += \
     src/sim/ragdoll_preview_data.cpp \
     src/sim/scene_document.cpp \
     src/sim/simulation_controller.cpp \
+    src/sim/simulation_controller_core.cpp \
+    src/sim/simulation_controller_scene.cpp \
+    src/sim/simulation_controller_entities.cpp \
+    src/sim/simulation_controller_ragdoll.cpp \
+    src/sim/simulation_controller_selection.cpp \
     src/sim/simulation_world.cpp \
     src/sim/transform_session_controller.cpp \
     src/sim/simulation_settings.cpp \
@@ -66,6 +71,7 @@ HEADERS += \
     include/scene_persistence.h \
     include/scene_presets.h \
     include/simulation_controller.h \
+    src/sim/simulation_controller_internal.h \
     include/simulation_world.h \
     include/simulation_settings.h \
     include/transform_session_controller.h

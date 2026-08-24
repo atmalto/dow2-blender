@@ -1,7 +1,7 @@
 TEMPLATE = app
 TARGET = havok_simulator
 
-QT += core gui opengl
+QT += core gui opengl network
 CONFIG += qt warn_on
 
 # Shared engine core (Havok config + sim/io sources & headers).
@@ -15,12 +15,18 @@ SOURCES += \
     src/app/dialog_form_utils.cpp \
     src/app/main.cpp \
     src/app/main_window.cpp \
+    src/app/main_window_entities.cpp \
+    src/app/main_window_scene.cpp \
+    src/app/main_window_simulation.cpp \
+    src/app/main_window_sync.cpp \
+    src/app/main_window_ui.cpp \
     src/app/main_window_ui_state.cpp \
     src/app/new_scene_dialog.cpp \
     src/app/physics_import_dialog.cpp \
     src/app/ragdoll_preview_window.cpp \
     src/app/ragdoll_properties_dialog.cpp \
     src/app/scene_file_commands.cpp \
+    src/app/sync_listener_dialog.cpp \
     src/app/simulation_settings_dialog.cpp \
     src/render/capsule_render_utils.cpp \
     src/render/viewport_overlay_renderer.cpp \
@@ -41,11 +47,34 @@ HEADERS += \
     include/ragdoll_preview_window.h \
     include/scene_file_commands.h \
     include/scene_body_renderer.h \
+    include/sync_listener_dialog.h \
     include/tool_dialogs.h \
     include/viewport_camera.h \
     include/viewport_overlay_renderer.h \
     include/viewport_tool_controller.h \
     include/viewport_widget.h
+
+# --- Blender sync bridge (loopback TCP -> shared run_scenario dispatcher) -----
+# Reuses the CLI's dependency-free JSON + command dispatcher so the GUI and the
+# headless CLI share one implementation.
+INCLUDEPATH += $$PWD/src/cli
+
+SOURCES += \
+    src/sync/sync_server.cpp \
+    src/cli/json_value.cpp \
+    src/cli/command_dispatch.cpp \
+    src/cli/command_dispatch_common.cpp \
+    src/cli/command_dispatch_scene.cpp \
+    src/cli/command_dispatch_entities.cpp \
+    src/cli/command_dispatch_imports.cpp \
+    src/cli/command_dispatch_query.cpp
+
+HEADERS += \
+    include/sync_protocol.h \
+    include/sync_server.h \
+    src/cli/json_value.h \
+    src/cli/command_dispatch.h \
+    src/cli/command_dispatch_internal.h
 
 OBJECTS_DIR = .build/obj
 MOC_DIR = .build/moc

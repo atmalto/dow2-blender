@@ -134,7 +134,7 @@ def _draw_import_section(layout, settings):
     import_body.prop(settings, "ragdoll_name", text="Target Name")
 
     import_button_row = import_body.row()
-    import_button_row.enabled = bool(str(settings.ragdoll_import_path or "").strip()) and bool(str(settings.ragdoll_model_path or "").strip())
+    import_button_row.enabled = bool(str(settings.ragdoll_import_path or "").strip())
     import_button_row.operator("dow2.import_ragdoll_hkx", text="Import Ragdoll HKX", icon="IMPORT")
 
 

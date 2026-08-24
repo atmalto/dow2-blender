@@ -14,10 +14,16 @@ include(sim_core.pri)
 SOURCES += \
     src/cli/main.cpp \
     src/cli/command_dispatch.cpp \
+    src/cli/command_dispatch_common.cpp \
+    src/cli/command_dispatch_scene.cpp \
+    src/cli/command_dispatch_entities.cpp \
+    src/cli/command_dispatch_imports.cpp \
+    src/cli/command_dispatch_query.cpp \
     src/cli/json_value.cpp
 
 HEADERS += \
     src/cli/command_dispatch.h \
+    src/cli/command_dispatch_internal.h \
     src/cli/json_value.h
 
 OBJECTS_DIR = .build_cli/obj

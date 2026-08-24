@@ -261,6 +261,33 @@ bool TransformSessionController::begin_uniform_scale()
     return true;
 }
 
+bool TransformSessionController::set_uniform_scale_axis(SceneMoveAxis axis)
+{
+    const SceneUniformScaleSession& scale_session = m_scene_document.uniform_scale_session();
+    const PhysicsObjectSceneEntity* object = 0;
+
+    if (!scale_session.active)
+    {
+        return false;
+    }
+
+    if (axis != SceneMoveAxisNone)
+    {
+        if (scale_session.entity_kind != SceneEntityKindPhysicsObject)
+        {
+            return false;
+        }
+
+        object = find_object_entity(scale_session.entity_id);
+        if (!object || !can_axis_scale_object(*object))
+        {
+            return false;
+        }
+    }
+
+    return m_scene_document.set_uniform_scale_axis(axis);
+}
+
 bool TransformSessionController::update_uniform_scale_preview(float scale_factor)
 {
     const SceneUniformScaleSession& scale_session = m_scene_document.uniform_scale_session();
@@ -320,6 +347,17 @@ void TransformSessionController::cancel_uniform_scale()
         scale_session.committed_scale);
     m_scene_document.cancel_uniform_scale();
     m_host.m_runtime_matches_scene = true;
+}
+
+bool TransformSessionController::can_axis_scale_object(const PhysicsObjectSceneEntity& object) const
+{
+    if (!object.record.editable)
+    {
+        return false;
+    }
+
+    return object.object_spec.object_type == SimulationController::ObjectCube ||
+        object.object_spec.object_type == SimulationController::ObjectWedge;
 }
 
 bool TransformSessionController::can_uniform_scale_object(const PhysicsObjectSceneEntity& object) const

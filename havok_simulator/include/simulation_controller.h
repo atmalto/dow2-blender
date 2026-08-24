@@ -1,7 +1,6 @@
 #ifndef HAVOK_SCENE_APP_SIMULATION_CONTROLLER_H
 #define HAVOK_SCENE_APP_SIMULATION_CONTROLLER_H
 
-#include <map>
 #include <vector>
 
 #include "body_render_state.h"
@@ -10,10 +9,7 @@
 #include "scene_presets.h"
 #include "scene_document.h"
 
-class hkpBoxShape;
 class hkpRigidBody;
-class hkpSphereShape;
-class hkpWorld;
 class RagdollRuntime;
 class RagdollRuntimeManager;
 class SimulationWorld;
@@ -108,6 +104,9 @@ public:
     const std::vector<BodyRenderState>& render_bodies() const;
     const std::vector<BodyRenderState>& preview_bodies() const;
     const SceneDocument& scene_document() const;
+    // Mutable document access for the sync bridge (stamp sync_id / reapply
+    // preserved transforms). Inline so simulation_controller.cpp is untouched.
+    SceneDocument& scene_document() { return m_scene_document; }
     const SceneEntitySelection& selected_entity() const;
     const SceneAxisMoveSession& axis_move_session() const;
     const SceneAxisRotateSession& axis_rotate_session() const;
@@ -126,6 +125,7 @@ public:
     bool commit_axis_rotate();
     void cancel_axis_rotate();
     bool begin_uniform_scale();
+    bool set_uniform_scale_axis(SceneMoveAxis axis);
     bool update_uniform_scale_preview(float scale_factor);
     bool commit_uniform_scale();
     void cancel_uniform_scale();
@@ -134,43 +134,10 @@ public:
 private:
     friend class TransformSessionController;
 
-    struct RuntimeBodyBinding
-    {
-        SceneEntityId entity_id;
-        SceneEntityKind entity_kind;
-        hkpRigidBody* body;
-        int render_index;
-    };
-
-    struct RuntimeEntityBinding
-    {
-        SceneEntityId entity_id;
-        SceneEntityKind entity_kind;
-        int first_runtime_body_index;
-        int runtime_body_count;
-        int first_render_index;
-        int render_body_count;
-    };
-
-    void initialize_runtime();
-    void shutdown_runtime();
     void clear_scene_contents();
-    void destroy_world();
-    void create_world();
-    void create_ground_body();
-    void create_dynamic_box();
-    void create_dynamic_sphere();
     void seed_default_scene_objects();
     void update_ground_scene_object();
-    void create_spawned_objects();
-    void create_force_entities();
-    void add_loaded_ragdoll();
-    void apply_continuous_force_entities();
     void step_ragdoll_runtimes();
-    void sync_render_state();
-    void add_body(SceneEntityId entity_id, SceneEntityKind entity_kind, hkpRigidBody* body, const BodyRenderState& state);
-    void add_render_body(SceneEntityId entity_id, SceneEntityKind entity_kind, hkpRigidBody* body, const BodyRenderState& state);
-    void remove_loaded_ragdoll_from_world();
     void unload_ragdoll();
     void rebuild_preview_bodies();
     void refresh_selection_highlight();
@@ -190,29 +157,10 @@ private:
     PhysicsObjectSceneEntity* find_object_entity(SceneEntityId entity_id);
     RagdollRuntime* find_ragdoll_runtime(SceneEntityId entity_id);
     const RagdollRuntime* find_ragdoll_runtime(SceneEntityId entity_id) const;
-    RagdollRuntime* find_ragdoll_runtime_owning_body(const hkpRigidBody* body);
     RagdollRuntime* primary_ragdoll_runtime();
     RagdollRuntime* active_ragdoll_runtime();
     const RagdollRuntime* primary_ragdoll_runtime() const;
     const RagdollRuntime* active_ragdoll_runtime() const;
-    const RuntimeBodyBinding* find_runtime_body_binding(const hkpRigidBody* body) const;
-    const RuntimeEntityBinding* find_runtime_entity_binding(SceneEntityId entity_id, SceneEntityKind entity_kind) const;
-    bool pick_force_entity_from_ray(const float ray_origin[3], const float ray_direction[3], float max_distance, SceneEntityId* entity_id, SceneEntityKind* entity_kind) const;
-
-    bool create_body_from_spec(
-        const SpawnedObjectSpec& spec,
-        hkpRigidBody** body,
-        BodyRenderState* state,
-        std::string* error_message);
-    bool build_render_state_from_spec(const SpawnedObjectSpec& spec, bool is_preview, BodyRenderState* state) const;
-    bool find_force_target(
-        const ForceSpec& spec,
-        hkpRigidBody** body,
-        float hit_point[3],
-        float direction[3],
-        std::string* error_message) const;
-
-    static int s_runtime_refcount;
 
     GroundMode m_ground_mode;
     bool m_is_playing;
@@ -221,20 +169,11 @@ private:
     SimulationWorld* m_simulation_world;
     TransformSessionController* m_transform_session_controller;
     float m_timestep;
-    hkpWorld* m_world;
-    hkpBoxShape* m_ground_shape;
-    hkpBoxShape* m_box_shape;
-    hkpSphereShape* m_sphere_shape;
     bool m_has_object_preview;
     bool m_has_force_preview;
     SceneDocument m_scene_document;
     SpawnedObjectSpec m_object_preview_spec;
     ForceSpec m_force_preview_spec;
-    std::vector<hkpRigidBody*> m_owned_bodies;
-    std::vector<RuntimeBodyBinding> m_runtime_bodies;
-    std::map<const hkpRigidBody*, std::size_t> m_runtime_body_lookup;
-    std::vector<RuntimeEntityBinding> m_runtime_entities;
-    std::vector<BodyRenderState> m_render_bodies;
     std::vector<BodyRenderState> m_preview_bodies;
     SceneEntityId m_default_ground_entity_id;
 };

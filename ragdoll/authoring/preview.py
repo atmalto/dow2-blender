@@ -4,6 +4,7 @@ import math
 import time
 
 import bpy
+import blf
 import gpu
 from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix, Vector
@@ -23,6 +24,7 @@ from .queries import _body_object_by_bone_name, _ragdoll_bones_in_order, is_ragd
 
 _CONSTRAINT_PREVIEW_WAS_ENABLED = False
 _CONSTRAINT_PREVIEW_DRAW_HANDLE = None
+_CONSTRAINT_PREVIEW_TEXT_DRAW_HANDLE = None
 _CONSTRAINT_PREVIEW_ARROW_SEGMENTS: list[tuple[Vector, Vector]] = []
 _CONSTRAINT_PREVIEW_CONE_SEGMENTS: list[tuple[Vector, Vector]] = []
 _CONSTRAINT_PREVIEW_PLANE_SEGMENTS: list[tuple[Vector, Vector]] = []
@@ -138,24 +140,36 @@ def _selected_ragdoll_body_names() -> set[str]:
 
 def register_constraint_preview_draw_handler() -> None:
     global _CONSTRAINT_PREVIEW_DRAW_HANDLE
+    global _CONSTRAINT_PREVIEW_TEXT_DRAW_HANDLE
 
-    if bpy.app.background or _CONSTRAINT_PREVIEW_DRAW_HANDLE is not None:
+    if bpy.app.background:
         return
-    _CONSTRAINT_PREVIEW_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
-        _draw_constraint_preview_overlay,
-        (),
-        "WINDOW",
-        "POST_VIEW",
-    )
+    if _CONSTRAINT_PREVIEW_DRAW_HANDLE is None:
+        _CONSTRAINT_PREVIEW_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
+            _draw_constraint_preview_overlay,
+            (),
+            "WINDOW",
+            "POST_VIEW",
+        )
+    if _CONSTRAINT_PREVIEW_TEXT_DRAW_HANDLE is None:
+        _CONSTRAINT_PREVIEW_TEXT_DRAW_HANDLE = bpy.types.SpaceView3D.draw_handler_add(
+            _draw_constraint_preview_text_overlay,
+            (),
+            "WINDOW",
+            "POST_PIXEL",
+        )
 
 
 def unregister_constraint_preview_draw_handler() -> None:
     global _CONSTRAINT_PREVIEW_DRAW_HANDLE
+    global _CONSTRAINT_PREVIEW_TEXT_DRAW_HANDLE
 
-    if _CONSTRAINT_PREVIEW_DRAW_HANDLE is None:
-        return
-    bpy.types.SpaceView3D.draw_handler_remove(_CONSTRAINT_PREVIEW_DRAW_HANDLE, "WINDOW")
-    _CONSTRAINT_PREVIEW_DRAW_HANDLE = None
+    if _CONSTRAINT_PREVIEW_DRAW_HANDLE is not None:
+        bpy.types.SpaceView3D.draw_handler_remove(_CONSTRAINT_PREVIEW_DRAW_HANDLE, "WINDOW")
+        _CONSTRAINT_PREVIEW_DRAW_HANDLE = None
+    if _CONSTRAINT_PREVIEW_TEXT_DRAW_HANDLE is not None:
+        bpy.types.SpaceView3D.draw_handler_remove(_CONSTRAINT_PREVIEW_TEXT_DRAW_HANDLE, "WINDOW")
+        _CONSTRAINT_PREVIEW_TEXT_DRAW_HANDLE = None
 
 
 def _constraint_arrow_triangle(start: Vector, end: Vector, view_direction: Vector) -> tuple[Vector, Vector, Vector] | None:
@@ -637,7 +651,9 @@ def _positions_from_segments(segments: list[tuple[Vector, Vector]]) -> list[tupl
 
 
 def _draw_constraint_preview_overlay() -> None:
-    if not _constraint_preview_enabled():
+    preview_enabled = _constraint_preview_enabled()
+    body_object = _constraint_preview_overlay_body()
+    if not preview_enabled and body_object is None:
         return
 
     region_data = getattr(bpy.context, "region_data", None)
@@ -646,45 +662,161 @@ def _draw_constraint_preview_overlay() -> None:
     cone_positions = _positions_from_segments(_CONSTRAINT_PREVIEW_CONE_SEGMENTS)
     plane_positions = _positions_from_segments(_CONSTRAINT_PREVIEW_PLANE_SEGMENTS)
     angular_positions = _positions_from_segments(_CONSTRAINT_PREVIEW_ANGULAR_SEGMENTS)
-    if not arrow_line_positions and not cone_positions and not plane_positions and not angular_positions:
+    if preview_enabled and (arrow_line_positions or cone_positions or plane_positions or angular_positions):
+        arrow_triangle_positions: list[tuple[float, float, float]] = []
+        if region_data is not None:
+            view_direction = region_data.view_rotation @ Vector((0.0, 0.0, -1.0))
+            for start, end in _CONSTRAINT_PREVIEW_ARROW_SEGMENTS:
+                arrow = _constraint_arrow_triangle(start, end, view_direction)
+                if arrow is None:
+                    continue
+                arrow_triangle_positions.extend(tuple(point) for point in arrow)
+
+        gpu.state.blend_set("ALPHA")
+        gpu.state.depth_test_set("NONE")
+        gpu.state.line_width_set(3.0)
+
+        shader.bind()
+        if arrow_line_positions:
+            shader.uniform_float("color", (1.0, 0.15, 0.1, 0.95))
+            batch_for_shader(shader, "LINES", {"pos": arrow_line_positions}).draw(shader)
+        if arrow_triangle_positions:
+            shader.uniform_float("color", (1.0, 0.15, 0.1, 0.95))
+            batch_for_shader(shader, "TRIS", {"pos": arrow_triangle_positions}).draw(shader)
+
+        if cone_positions:
+            shader.uniform_float("color", (0.22, 0.82, 1.0, 0.88))
+            batch_for_shader(shader, "LINES", {"pos": cone_positions}).draw(shader)
+
+        if plane_positions:
+            shader.uniform_float("color", (0.2, 0.45, 1.0, 0.9))
+            batch_for_shader(shader, "LINES", {"pos": plane_positions}).draw(shader)
+
+        if angular_positions:
+            shader.uniform_float("color", (1.0, 0.78, 0.24, 0.92))
+            batch_for_shader(shader, "LINES", {"pos": angular_positions}).draw(shader)
+
+        gpu.state.line_width_set(1.0)
+        gpu.state.depth_test_set("LESS_EQUAL")
+        gpu.state.blend_set("NONE")
+
+def _constraint_preview_overlay_body() -> bpy.types.Object | None:
+    context = getattr(bpy, "context", None)
+    if context is None:
+        return None
+
+    active_body = resolve_ragdoll_body_object(getattr(context, "active_object", None))
+    selected_body_names = _selected_ragdoll_body_names()
+    if active_body is not None and active_body.name in selected_body_names:
+        return active_body
+
+    for body_name in selected_body_names:
+        body_object = bpy.data.objects.get(body_name)
+        if body_object is not None:
+            return body_object
+    return None
+
+
+def _draw_constraint_preview_text_line(
+    font_id: int,
+    x: float,
+    y: float,
+    text: str,
+    color: tuple[float, float, float, float],
+) -> None:
+    blf.position(font_id, x, y, 0.0)
+    blf.color(font_id, *color)
+    blf.draw(font_id, text)
+
+
+def _draw_constraint_preview_text_overlay() -> None:
+    body_object = _constraint_preview_overlay_body()
+
+    context = getattr(bpy, "context", None)
+    region = getattr(context, "region", None) if context is not None else None
+    preview_enabled = _constraint_preview_enabled()
+    if body_object is None:
+        return
+    if region is None:
         return
 
-    arrow_triangle_positions: list[tuple[float, float, float]] = []
-    if region_data is not None:
-        view_direction = region_data.view_rotation @ Vector((0.0, 0.0, -1.0))
-        for start, end in _CONSTRAINT_PREVIEW_ARROW_SEGMENTS:
-            arrow = _constraint_arrow_triangle(start, end, view_direction)
-            if arrow is None:
-                continue
-            arrow_triangle_positions.extend(tuple(point) for point in arrow)
+    body_shape = str(body_object.get(RAGDOLL_BODY_SHAPE_PROP, "CAPSULE") or "CAPSULE").upper()
+    font_id = 0
+    line_height = 18.0
+    x = 104.0
+    y = region.height - 148.0
+    text_color = (0.96, 0.98, 1.0, 1.0)
+    muted_color = (0.78, 0.84, 0.9, 1.0)
+    arrow_color = (1.0, 0.15, 0.1, 0.95)
+    cone_color = (0.22, 0.82, 1.0, 0.95)
+    plane_color = (0.2, 0.45, 1.0, 0.95)
+    angular_color = (1.0, 0.78, 0.24, 0.95)
 
+    blf.size(font_id, 12.0)
+
+    lines: list[tuple[str, tuple[float, float, float, float]]] = [
+        (f"Ragdoll body: {body_object.name}", text_color),
+    ]
+    if body_shape == "CAPSULE":
+        lines.append(("Capsule shortcuts: Ctrl+Alt+Wheel or Ctrl+Up/Down = length", muted_color))
+        lines.append(("Capsule shortcuts: Ctrl+Shift+Wheel or Ctrl+Left/Right = radius", muted_color))
+    else:
+        lines.append(("Capsule shortcuts apply only when the selected ragdoll body is a capsule", muted_color))
+
+    lines.append(("", text_color))
+
+    if not preview_enabled:
+        lines.append(("Constraint previews are currently hidden", muted_color))
+
+    lines.append(("Preview colors:", text_color))
+    lines.append(("Red = parent/child body link", arrow_color))
+    lines.append(("Aqua = cone angle limit", cone_color))
+    lines.append(("Blue = plane min/max limits", plane_color))
+    lines.append(("Yellow = twist or hinge angular limits", angular_color))
+
+    visible_lines = [text for text, _color in lines if text]
+    max_width = max((blf.dimensions(font_id, text)[0] for text in visible_lines), default=0.0)
+    box_left = x - 14.0
+    box_top = y + 12.0
+    box_right = x + max_width + 14.0
+    box_bottom = y - (line_height * max(len(lines) - 1, 0)) - 10.0
+
+    bg_shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    bg_shader.bind()
     gpu.state.blend_set("ALPHA")
-    gpu.state.depth_test_set("NONE")
-    gpu.state.line_width_set(3.0)
-
-    shader.bind()
-    if arrow_line_positions:
-        shader.uniform_float("color", (1.0, 0.15, 0.1, 0.95))
-        batch_for_shader(shader, "LINES", {"pos": arrow_line_positions}).draw(shader)
-    if arrow_triangle_positions:
-        shader.uniform_float("color", (1.0, 0.15, 0.1, 0.95))
-        batch_for_shader(shader, "TRIS", {"pos": arrow_triangle_positions}).draw(shader)
-
-    if cone_positions:
-        shader.uniform_float("color", (0.22, 0.82, 1.0, 0.88))
-        batch_for_shader(shader, "LINES", {"pos": cone_positions}).draw(shader)
-
-    if plane_positions:
-        shader.uniform_float("color", (0.2, 0.45, 1.0, 0.9))
-        batch_for_shader(shader, "LINES", {"pos": plane_positions}).draw(shader)
-
-    if angular_positions:
-        shader.uniform_float("color", (1.0, 0.78, 0.24, 0.92))
-        batch_for_shader(shader, "LINES", {"pos": angular_positions}).draw(shader)
-
-    gpu.state.line_width_set(1.0)
-    gpu.state.depth_test_set("LESS_EQUAL")
+    bg_shader.uniform_float("color", (0.03, 0.05, 0.07, 0.74))
+    batch_for_shader(
+        bg_shader,
+        "TRI_FAN",
+        {
+            "pos": [
+                (box_left, box_top),
+                (box_right, box_top),
+                (box_right, box_bottom),
+                (box_left, box_bottom),
+            ]
+        },
+    ).draw(bg_shader)
+    bg_shader.uniform_float("color", (0.62, 0.72, 0.82, 0.55))
+    batch_for_shader(
+        bg_shader,
+        "LINE_LOOP",
+        {
+            "pos": [
+                (box_left, box_top),
+                (box_right, box_top),
+                (box_right, box_bottom),
+                (box_left, box_bottom),
+            ]
+        },
+    ).draw(bg_shader)
     gpu.state.blend_set("NONE")
+
+    current_y = y
+    for text, color in lines:
+        if text:
+            _draw_constraint_preview_text_line(font_id, x, current_y, text, color)
+        current_y -= line_height
 
 
 def sync_constraint_preview_objects() -> int:
@@ -696,6 +828,8 @@ def sync_constraint_preview_objects() -> int:
     global _CONSTRAINT_PREVIEW_LAST_SELECTED_BODIES
     global _CONSTRAINT_PREVIEW_LAST_CHANGE_TIME
     global _CONSTRAINT_PREVIEW_WAS_ENABLED
+
+    register_constraint_preview_draw_handler()
 
     if not _constraint_preview_enabled():
         if _CONSTRAINT_PREVIEW_WAS_ENABLED:

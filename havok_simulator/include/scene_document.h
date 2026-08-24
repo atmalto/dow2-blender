@@ -119,6 +119,7 @@ public:
     bool commit_axis_rotate();
     const SceneAxisRotateSession& axis_rotate_session() const;
     bool begin_uniform_scale();
+    bool set_uniform_scale_axis(SceneMoveAxis axis);
     bool update_uniform_scale_preview(float scale_factor);
     bool commit_uniform_scale();
     const SceneUniformScaleSession& uniform_scale_session() const;

@@ -233,6 +233,23 @@ bool ViewportToolController::key_press(QKeyEvent* event)
 
     if (axis != SceneMoveAxisNone)
     {
+        if (!is_shift_rotation && m_simulation->uniform_scale_session().active)
+        {
+            if (m_simulation->set_uniform_scale_axis(axis))
+            {
+                const float scale_factor = compute_uniform_scale_factor(
+                    m_uniform_scale_start_mouse_pos,
+                    m_last_mouse_pos);
+
+                if (m_simulation->update_uniform_scale_preview(scale_factor))
+                {
+                    m_viewport.updateGL();
+                    m_viewport.notify_selection_changed();
+                }
+            }
+            return true;
+        }
+
         if (is_shift_rotation)
         {
             if (m_simulation->begin_axis_rotate(axis))

@@ -52,6 +52,10 @@ struct SceneEntityRecord
     bool movable;
     bool editable;
     bool deletable;
+    // Hidden identity used by the Blender -> simulator sync bridge to match a
+    // previously-synced group across re-syncs. Empty for entities that were not
+    // created by a sync operation. Not persisted to scene files.
+    std::string sync_id;
 };
 
 struct SceneAxisMoveSession
@@ -112,6 +116,7 @@ struct SceneUniformScaleSession
         : active(false)
         , entity_id(0)
         , entity_kind(SceneEntityKindNone)
+        , axis(SceneMoveAxisNone)
         , sensitivity(1.0f)
     {
         committed_scale[0] = 1.0f;
@@ -125,6 +130,7 @@ struct SceneUniformScaleSession
     bool active;
     SceneEntityId entity_id;
     SceneEntityKind entity_kind;
+    SceneMoveAxis axis;
     // Drag-sensitivity multiplier applied to the exponent of the scale factor.
     // 1.0 = normal (physics objects); < 1.0 = gentler/finer (force radius).
     float sensitivity;

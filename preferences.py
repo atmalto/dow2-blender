@@ -77,10 +77,41 @@ class DoW2ToolsPreferences(AddonPreferences):
         update=_save_preferences_update,
     )
 
+    sync_host: bpy.props.StringProperty(
+        name="Sync Host",
+        description="Loopback host the running Havok Simulator sync bridge listens on",
+        default="127.0.0.1",
+        update=_save_preferences_update,
+    )
+
+    sync_port: bpy.props.IntProperty(
+        name="Sync Port",
+        description="TCP port the running Havok Simulator sync bridge listens on (must match its --sync-listen)",
+        default=47800,
+        min=1,
+        max=65535,
+        update=_save_preferences_update,
+    )
+
+    sync_token: bpy.props.StringProperty(
+        name="Sync Token",
+        description="Shared secret sent with sync requests (must match the simulator's DOW2_SYNC_TOKEN; leave blank to disable)",
+        default="",
+        update=_save_preferences_update,
+    )
+
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "dow2_path")
         layout.prop(self, "module_path", text="Mod Folder")
+
+        layout.separator()
+        col = layout.column(align=True)
+        col.label(text="Havok Simulator Sync")
+        row = col.row(align=True)
+        row.prop(self, "sync_host", text="Host")
+        row.prop(self, "sync_port", text="Port")
+        col.prop(self, "sync_token", text="Token")
 
         layout.separator()
         layout.operator("dow2.reload_addon", icon='RECOVER_LAST')

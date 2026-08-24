@@ -328,20 +328,22 @@ void ViewportOverlayRenderer::draw_screen_overlay() const
     m_viewport.renderText(24.0, 268.0, "Transform");
     m_viewport.renderText(40.0, 288.0, "X / Y / Z: move selected object on axis");
     m_viewport.renderText(40.0, 308.0, "Shift+X / Shift+Y / Shift+Z: rotate selected object on axis");
-    m_viewport.renderText(40.0, 328.0, "S: uniformly scale selected cube / wedge / sphere");
-    m_viewport.renderText(40.0, 348.0, "Mouse left / right while scaling: smaller / larger");
-    m_viewport.renderText(40.0, 368.0, "LMB: confirm active transform");
-    m_viewport.renderText(40.0, 388.0, "Esc: cancel active transform");
-    m_viewport.renderText(24.0, 416.0, "Scene");
-    m_viewport.renderText(40.0, 436.0, "Space: play / pause simulation");
-    m_viewport.renderText(40.0, 456.0, "Right Arrow: step simulation");
-    m_viewport.renderText(40.0, 476.0, "Backspace: reset simulation");
-    m_viewport.renderText(40.0, 496.0, "R: add rigid body object");
-    m_viewport.renderText(40.0, 516.0, "F: add force");
-    m_viewport.renderText(40.0, 536.0, "E: edit selected object");
-    m_viewport.renderText(40.0, 556.0, "Delete: delete selected object");
-    m_viewport.renderText(40.0, 576.0, "Ctrl+N: new scene");
-    m_viewport.renderText(40.0, 596.0, "Ctrl+W: clear scene");
+    m_viewport.renderText(40.0, 328.0, "S: scale selected cube / wedge / sphere");
+    m_viewport.renderText(40.0, 348.0, "X / Y / Z while scaling cube / wedge: side / front-back / vertical axis");
+    m_viewport.renderText(40.0, 368.0, "Sphere and force scaling stay uniform");
+    m_viewport.renderText(40.0, 388.0, "Mouse left / right while scaling: smaller / larger");
+    m_viewport.renderText(40.0, 408.0, "LMB: confirm active transform");
+    m_viewport.renderText(40.0, 428.0, "Esc: cancel active transform");
+    m_viewport.renderText(24.0, 456.0, "Scene");
+    m_viewport.renderText(40.0, 476.0, "Space: play / pause simulation");
+    m_viewport.renderText(40.0, 496.0, "Right Arrow: step simulation");
+    m_viewport.renderText(40.0, 516.0, "Backspace: reset simulation");
+    m_viewport.renderText(40.0, 536.0, "R: add rigid body object");
+    m_viewport.renderText(40.0, 556.0, "F: add force");
+    m_viewport.renderText(40.0, 576.0, "E: edit selected object");
+    m_viewport.renderText(40.0, 596.0, "Delete: delete selected object");
+    m_viewport.renderText(40.0, 616.0, "Ctrl+N: new scene");
+    m_viewport.renderText(40.0, 636.0, "Ctrl+W: clear scene");
 
     if (m_camera.is_orthographic())
     {

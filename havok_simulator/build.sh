@@ -16,14 +16,14 @@ case "$BUILD_MODE" in
 		QMAKE_CONFIG=(CONFIG+=debug CONFIG-=release)
 		NMAKE_TARGET='debug'
 		OUTPUT_DIR='build'
-		QT_DLLS=(QtCored4.dll QtGuid4.dll QtOpenGLd4.dll)
+		QT_DLLS=(QtCored4.dll QtGuid4.dll QtOpenGLd4.dll QtNetworkd4.dll)
 		;;
 	release)
 		export HAVOK_LIB_FLAVOR='release_multithreaded'
 		QMAKE_CONFIG=(CONFIG+=release CONFIG-=debug)
 		NMAKE_TARGET='release'
 		OUTPUT_DIR='release'
-		QT_DLLS=(QtCore4.dll QtGui4.dll QtOpenGL4.dll)
+		QT_DLLS=(QtCore4.dll QtGui4.dll QtOpenGL4.dll QtNetwork4.dll)
 		;;
 	*)
 		echo "Usage: $0 [debug|release]" >&2
