@@ -4,7 +4,7 @@
 bl_info = {
     "name": "DoW2 Tools",
     "author": "Santos Tools 2, Clocktickin",
-    "version": (0, 2, 0),
+    "version": (0, 3, 1),
     "blender": (4, 3, 0),
     "location": "N-panel Sidebar > DoW2",
     "description": "Import and export Dawn of War 2 asset files.",

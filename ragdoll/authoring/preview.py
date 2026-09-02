@@ -12,6 +12,7 @@ from mathutils import Matrix, Vector
 from .collections import remove_collection_tree
 from .constraint_props import read_constraint_settings
 from .constants import (
+    RAGDOLL_BODY_MASS_PROP,
     RAGDOLL_BODY_SHAPE_PROP,
     RAGDOLL_BODY_VERTEX_A_PROP,
     RAGDOLL_BODY_VERTEX_B_PROP,
@@ -29,6 +30,7 @@ _CONSTRAINT_PREVIEW_ARROW_SEGMENTS: list[tuple[Vector, Vector]] = []
 _CONSTRAINT_PREVIEW_CONE_SEGMENTS: list[tuple[Vector, Vector]] = []
 _CONSTRAINT_PREVIEW_PLANE_SEGMENTS: list[tuple[Vector, Vector]] = []
 _CONSTRAINT_PREVIEW_ANGULAR_SEGMENTS: list[tuple[Vector, Vector]] = []
+_CONSTRAINT_PREVIEW_ANGULAR_LABELS: list[tuple[tuple[float, float, float], str, tuple[float, float, float, float]]] = []
 _CONSTRAINT_PREVIEW_LAST_SEEN_SIGNATURE: tuple[object, ...] = ()
 _CONSTRAINT_PREVIEW_LAST_SELECTED_BODIES: tuple[str, ...] = ()
 _CONSTRAINT_PREVIEW_LAST_CHANGE_TIME = 0.0
@@ -70,6 +72,7 @@ def clear_constraint_preview_objects() -> None:
     global _CONSTRAINT_PREVIEW_CONE_SEGMENTS
     global _CONSTRAINT_PREVIEW_PLANE_SEGMENTS
     global _CONSTRAINT_PREVIEW_ANGULAR_SEGMENTS
+    global _CONSTRAINT_PREVIEW_ANGULAR_LABELS
     global _CONSTRAINT_PREVIEW_LAST_SEEN_SIGNATURE
     global _CONSTRAINT_PREVIEW_LAST_SELECTED_BODIES
     global _CONSTRAINT_PREVIEW_LAST_CHANGE_TIME
@@ -79,6 +82,7 @@ def clear_constraint_preview_objects() -> None:
     _CONSTRAINT_PREVIEW_CONE_SEGMENTS = []
     _CONSTRAINT_PREVIEW_PLANE_SEGMENTS = []
     _CONSTRAINT_PREVIEW_ANGULAR_SEGMENTS = []
+    _CONSTRAINT_PREVIEW_ANGULAR_LABELS = []
     _CONSTRAINT_PREVIEW_LAST_SEEN_SIGNATURE = ()
     _CONSTRAINT_PREVIEW_LAST_SELECTED_BODIES = ()
     _CONSTRAINT_PREVIEW_LAST_CHANGE_TIME = 0.0
@@ -394,13 +398,19 @@ def _build_hinge_angular_segments(
     sample_count = max(12, int(max(sweep, math.radians(10.0)) / math.radians(8.0)))
     _twist, plane, side = _constraint_basis(twist_axis, plane_axis)
 
+    # Limited-hinge positive angles sweep opposite the ragdoll twist wedge in the
+    # DoW2 data. Using +side here puts knees and elbows on the wrong bend side;
+    # sweep toward -side so positive max angles follow the authored flexion
+    # direction around the hinge axis.
+    def _hinge_direction(theta: float) -> Vector:
+        return _normalized((plane * math.cos(theta)) - (side * math.sin(theta)), plane)
+
     outer_points: list[Vector] = []
     inner_points: list[Vector] = []
     for step in range(sample_count + 1):
         factor = step / sample_count
         angle = angle_min + ((angle_max - angle_min) * factor)
-        direction = (plane * math.cos(angle)) + (side * math.sin(angle))
-        direction = _normalized(direction, plane)
+        direction = _hinge_direction(angle)
         outer_points.append(pivot + (direction * clamped_outer))
         inner_points.append(pivot + (direction * clamped_inner))
 
@@ -408,6 +418,11 @@ def _build_hinge_angular_segments(
     _append_polyline_segments(segments, inner_points)
     segments.append((outer_points[0].copy(), inner_points[0].copy()))
     segments.append((outer_points[-1].copy(), inner_points[-1].copy()))
+
+    low_angle, high_angle = sorted((angle_min, angle_max))
+    if low_angle <= 0.0 <= high_angle:
+        segments.append((pivot.copy(), pivot + (_hinge_direction(0.0) * clamped_outer * 1.12)))
+
     return segments
 
 
@@ -420,27 +435,47 @@ def _build_ragdoll_twist_segments(
     outer_radius: float,
     inner_radius: float,
 ) -> list[tuple[Vector, Vector]]:
+    # Havok twist limits (SDK Fig 3.30): the twist is a rotation about the twist
+    # axis, drawn in the plane perpendicular to it. We sweep the *plane* axis about
+    # the twist axis, i.e. direction = plane*cos + side*sin, matching the cone-rim
+    # and limited-hinge convention. This is important for mirroring: the plane axis
+    # reflects correctly across left/right limbs, whereas the twist x plane (side)
+    # axis flips handedness under reflection -- basing the wedge on `side` made the
+    # left/right twist previews point the same way instead of mirroring.
+    del inner_radius
     segments: list[tuple[Vector, Vector]] = []
-    clamped_outer = max(float(outer_radius), 0.01)
-    clamped_inner = max(min(float(inner_radius), clamped_outer * 0.92), clamped_outer * 0.6)
-    sweep = abs(angle_max - angle_min)
-    sample_count = max(12, int(max(sweep, math.radians(10.0)) / math.radians(8.0)))
+    radius = max(float(outer_radius), 0.01)
     _twist, plane, side = _constraint_basis(twist_axis, plane_axis)
 
-    outer_points: list[Vector] = []
-    inner_points: list[Vector] = []
+    def _twist_direction(theta: float) -> Vector:
+        return _normalized((plane * math.cos(theta)) + (side * math.sin(theta)), plane)
+
+    sweep = abs(angle_max - angle_min)
+    sample_count = max(8, int(max(sweep, math.radians(10.0)) / math.radians(6.0)))
+
+    arc_points: list[Vector] = []
     for step in range(sample_count + 1):
         factor = step / sample_count
         angle = angle_min + ((angle_max - angle_min) * factor)
-        direction = (side * math.cos(angle)) - (plane * math.sin(angle))
-        direction = _normalized(direction, side)
-        outer_points.append(pivot + (direction * clamped_outer))
-        inner_points.append(pivot + (direction * clamped_inner))
+        arc_points.append(pivot + (_twist_direction(angle) * radius))
+    _append_polyline_segments(segments, arc_points)
 
-    _append_polyline_segments(segments, outer_points)
-    _append_polyline_segments(segments, inner_points)
-    segments.append((outer_points[0].copy(), inner_points[0].copy()))
-    segments.append((outer_points[-1].copy(), inner_points[-1].copy()))
+    # Wedge edges: pivot -> min extent and pivot -> max extent.
+    segments.append((pivot.copy(), arc_points[0].copy()))
+    segments.append((pivot.copy(), arc_points[-1].copy()))
+
+    # A few interior spokes so the sector reads as a filled fan.
+    spoke_count = max(1, sample_count // 3)
+    for index in range(1, spoke_count):
+        factor = index / spoke_count
+        angle = angle_min + ((angle_max - angle_min) * factor)
+        segments.append((pivot.copy(), pivot + (_twist_direction(angle) * radius)))
+
+    # Zero-reference tick along the twist x plane axis when 0 is within range.
+    low_angle, high_angle = sorted((angle_min, angle_max))
+    if low_angle <= 0.0 <= high_angle:
+        segments.append((pivot.copy(), pivot + (_twist_direction(0.0) * radius * 1.12)))
+
     return segments
 
 
@@ -527,72 +562,103 @@ def _build_ragdoll_cone_plane_segments(
     return cone_segments, plane_segments
 
 
+def _cone_limit_label_anchor(
+    pivot: Vector,
+    twist_axis: Vector,
+    plane_axis: Vector,
+    cone_angle: float,
+    radius: float,
+) -> Vector:
+    twist, plane, _side = _constraint_basis(twist_axis, plane_axis)
+    direction = (twist * math.cos(cone_angle)) + (plane * math.sin(cone_angle))
+    direction = _normalized(direction, twist)
+    return pivot + (direction * max(radius, 0.05))
+
+
+def _plane_limit_label_anchor(
+    pivot: Vector,
+    plane_axis: Vector,
+    twist_axis: Vector,
+    half_angle: float,
+    radius: float,
+) -> Vector:
+    plane = _normalized(plane_axis, Vector((1.0, 0.0, 0.0)))
+    twist = _normalized(twist_axis, Vector((0.0, 0.0, 1.0)))
+    direction = (plane * math.cos(half_angle)) + (twist * math.sin(half_angle))
+    direction = _normalized(direction, plane)
+    return pivot + (direction * max(radius, 0.05))
+
+
 def _choose_constraint_frame(record: dict[str, object]) -> tuple[Vector, Vector, Vector]:
     settings = record["settings"]
     joint_matrix = record["joint_matrix"]
     joint_head = record["joint_head"]
 
-    twist_axis_a = Vector(_dx_vector_to_blender_local(settings["twist_axis_a"]))
     twist_axis_b = Vector(_dx_vector_to_blender_local(settings["twist_axis_b"]))
-    plane_axis_a = Vector(_dx_vector_to_blender_local(settings["plane_axis_a"]))
     plane_axis_b = Vector(_dx_vector_to_blender_local(settings["plane_axis_b"]))
 
-    candidates = []
-    for current_twist, current_plane in (
-        (twist_axis_a, plane_axis_a),
-        (twist_axis_b, plane_axis_b),
-    ):
-        candidates.append(
-            (
-                joint_head.copy(),
-                _transform_direction(joint_matrix, current_twist, Vector((0.0, 0.0, 1.0))),
-                _transform_direction(joint_matrix, current_plane, Vector((1.0, 0.0, 0.0))),
-            )
-        )
+    constraint_type = str(settings.get("constraint_type", "ragdoll"))
+    reference_body = record.get("reference_body")
 
-    pivot, twist_axis, plane_axis = candidates[1] if len(candidates) > 1 else candidates[0]
-    return pivot, twist_axis, plane_axis
+    if reference_body is None:
+        twist_axis = _transform_direction(joint_matrix, twist_axis_b, Vector((0.0, 0.0, 1.0)))
+        plane_axis = _transform_direction(joint_matrix, plane_axis_b, Vector((1.0, 0.0, 0.0)))
+        return joint_head.copy(), twist_axis, plane_axis
+
+    # Havok stores both ragdoll and limited-hinge angular frames on the rigid
+    # bodies' local constraint transforms. DoW2 authors them against body B
+    # (the parent/reference body), so the preview must follow that live rigid
+    # body transform whenever it is available.
+    reference_matrix = reference_body.matrix_world
+    twist_axis = _transform_direction(reference_matrix, twist_axis_b, Vector((0.0, 0.0, 1.0)))
+    plane_axis = _transform_direction(reference_matrix, plane_axis_b, Vector((1.0, 0.0, 0.0)))
+    return joint_head.copy(), twist_axis, plane_axis
 
 
-def _adapt_ragdoll_presentation_frame(
-    pivot: Vector,
-    twist_axis: Vector,
-    plane_axis: Vector,
-    joint_head: Vector,
-    joint_tail: Vector,
-    display_matrix: Matrix,
-) -> tuple[Vector, Vector, Vector]:
-    tail_direction = joint_tail - joint_head
-    loaded_twist, loaded_plane, _loaded_side = _constraint_basis(twist_axis, plane_axis)
-    presentation_twist = _normalized(tail_direction, loaded_twist)
+# def _adapt_ragdoll_presentation_frame(
+#     pivot: Vector,
+#     twist_axis: Vector,
+#     plane_axis: Vector,
+#     joint_head: Vector,
+#     joint_tail: Vector,
+#     display_matrix: Matrix,
+# ) -> tuple[Vector, Vector, Vector]:
+#     tail_direction = joint_tail - joint_head
+#     loaded_twist, loaded_plane, _loaded_side = _constraint_basis(twist_axis, plane_axis)
+#     presentation_twist = _normalized(tail_direction, loaded_twist)
 
-    twist_alignment = loaded_twist.rotation_difference(presentation_twist)
-    presentation_plane = twist_alignment @ loaded_plane
-    presentation_plane = presentation_plane - (presentation_twist * presentation_plane.dot(presentation_twist))
-    if presentation_plane.length <= 1e-6:
-        presentation_plane = presentation_twist.orthogonal()
-    presentation_plane.normalize()
+#     twist_alignment = loaded_twist.rotation_difference(presentation_twist)
+#     presentation_plane = twist_alignment @ loaded_plane
+#     presentation_plane = presentation_plane - (presentation_twist * presentation_plane.dot(presentation_twist))
+#     if presentation_plane.length <= 1e-6:
+#         presentation_plane = presentation_twist.orthogonal()
+#     presentation_plane.normalize()
 
-    display_basis = display_matrix.to_3x3()
-    display_side = display_basis @ Vector((0.0, 0.0, 1.0))
-    display_side = display_side - (presentation_twist * display_side.dot(presentation_twist))
-    if display_side.length > 1e-6:
-        display_side.normalize()
-        presentation_side = presentation_twist.cross(presentation_plane)
-        presentation_side = _normalized(presentation_side, display_side)
-        signed_roll = math.atan2(
-            presentation_twist.dot(presentation_side.cross(display_side)),
-            presentation_side.dot(display_side),
-        )
-        presentation_plane = (Matrix.Rotation(signed_roll, 4, presentation_twist).to_3x3() @ presentation_plane)
-        presentation_plane = _normalized(presentation_plane, presentation_twist.orthogonal())
+#     display_basis = display_matrix.to_3x3()
+#     display_side = display_basis @ Vector((0.0, 0.0, 1.0))
+#     display_side = display_side - (presentation_twist * display_side.dot(presentation_twist))
+#     if display_side.length > 1e-6:
+#         display_side.normalize()
+#         presentation_side = presentation_twist.cross(presentation_plane)
+#         presentation_side = _normalized(presentation_side, display_side)
+#         signed_roll = math.atan2(
+#             presentation_twist.dot(presentation_side.cross(display_side)),
+#             presentation_side.dot(display_side),
+#         )
+#         presentation_plane = (Matrix.Rotation(signed_roll, 4, presentation_twist).to_3x3() @ presentation_plane)
+#         presentation_plane = _normalized(presentation_plane, presentation_twist.orthogonal())
 
-    return pivot, presentation_twist, presentation_plane
+#     return pivot, presentation_twist, presentation_plane
 
 
 def _build_constraint_preview_segments(
     record: dict[str, object]
-) -> tuple[list[tuple[Vector, Vector]], list[tuple[Vector, Vector]], list[tuple[Vector, Vector]]]:
+) -> tuple[
+    list[tuple[Vector, Vector]],
+    list[tuple[Vector, Vector]],
+    list[tuple[Vector, Vector]],
+    list[tuple[tuple[float, float, float], str, tuple[float, float, float, float]]],
+]:
     settings = record["settings"]
     pivot, twist_axis, plane_axis = _choose_constraint_frame(record)
     preview_scale = float(record["preview_scale"])
@@ -601,21 +667,31 @@ def _build_constraint_preview_segments(
     cone_segments: list[tuple[Vector, Vector]] = []
     plane_segments: list[tuple[Vector, Vector]] = []
     angular_segments: list[tuple[Vector, Vector]] = []
+    labels: list[tuple[tuple[float, float, float], str, tuple[float, float, float, float]]] = []
     constraint_type = str(settings["constraint_type"])
+    label_color = (1.0, 1.0, 1.0, 1.0)
 
     if constraint_type == "limited_hinge":
+        hinge_min = float(settings["hinge_min"])
+        hinge_max = float(settings["hinge_max"])
         angular_segments.extend(
             _build_hinge_angular_segments(
                 pivot,
                 twist_axis,
                 plane_axis,
-                float(settings["hinge_min"]),
-                float(settings["hinge_max"]),
+                hinge_min,
+                hinge_max,
                 preview_scale * 0.9,
                 preview_scale * 0.65,
             )
         )
-        return cone_segments, plane_segments, angular_segments
+        _twist, plane, side = _constraint_basis(twist_axis, plane_axis)
+        label_radius = preview_scale * 0.9 * 1.18
+        for angle_value, tag in ((hinge_min, "hinge min"), (hinge_max, "hinge max")):
+            direction = _normalized((plane * math.cos(angle_value)) - (side * math.sin(angle_value)), plane)
+            anchor = pivot + (direction * label_radius)
+            labels.append((tuple(anchor), f"{tag} {math.degrees(angle_value):.0f}\u00b0", label_color))
+        return cone_segments, plane_segments, angular_segments, labels
 
     record_cone_segments, record_plane_segments = (
         _build_ragdoll_cone_plane_segments(
@@ -632,18 +708,60 @@ def _build_constraint_preview_segments(
     )
     cone_segments.extend(record_cone_segments)
     plane_segments.extend(record_plane_segments)
+    twist_min = float(settings["twist_min"])
+    twist_max = float(settings["twist_max"])
+    cone_angle = float(settings["cone_angle"])
+    plane_min = float(settings["plane_min"])
+    plane_max = float(settings["plane_max"])
     angular_segments.extend(
         _build_ragdoll_twist_segments(
             pivot,
             twist_axis,
             plane_axis,
-            float(settings["twist_min"]),
-            float(settings["twist_max"]),
+            twist_min,
+            twist_max,
             preview_scale * 0.72,
             preview_scale * 0.52,
         )
     )
-    return cone_segments, plane_segments, angular_segments
+    _twist, plane, side = _constraint_basis(twist_axis, plane_axis)
+    cone_label_anchor = _cone_limit_label_anchor(
+        pivot,
+        twist_axis,
+        plane_axis,
+        cone_angle,
+        preview_scale * 1.04,
+    )
+    labels.append((tuple(cone_label_anchor), f"Cone Angle {math.degrees(cone_angle):.0f}\u00b0", label_color))
+
+    plane_label_radius = preview_scale * 1.02
+    plane_max_half_angle = _plane_cone_half_angle(plane_max)
+    plane_min_half_angle = _plane_cone_half_angle(plane_min)
+    if bool(record["show_plane_max"]):
+        plane_max_anchor = _plane_limit_label_anchor(
+            pivot,
+            plane_axis,
+            twist_axis,
+            plane_max_half_angle,
+            plane_label_radius,
+        )
+        labels.append((tuple(plane_max_anchor), f"Plane Max Angle {math.degrees(plane_max):.0f}\u00b0", label_color))
+    if bool(record["show_plane_min"]):
+        plane_min_anchor = _plane_limit_label_anchor(
+            pivot,
+            -plane_axis,
+            twist_axis,
+            plane_min_half_angle,
+            plane_label_radius,
+        )
+        labels.append((tuple(plane_min_anchor), f"Plane Min Angle {math.degrees(plane_min):.0f}\u00b0", label_color))
+
+    label_radius = preview_scale * 0.72 * 1.2
+    for angle_value, tag in ((twist_min, "twist min"), (twist_max, "twist max")):
+        direction = _normalized((plane * math.cos(angle_value)) + (side * math.sin(angle_value)), plane)
+        anchor = pivot + (direction * label_radius)
+        labels.append((tuple(anchor), f"{tag} {math.degrees(angle_value):.0f}\u00b0", label_color))
+    return cone_segments, plane_segments, angular_segments, labels
 
 
 def _positions_from_segments(segments: list[tuple[Vector, Vector]]) -> list[tuple[float, float, float]]:
@@ -742,7 +860,7 @@ def _draw_constraint_preview_text_overlay() -> None:
 
     body_shape = str(body_object.get(RAGDOLL_BODY_SHAPE_PROP, "CAPSULE") or "CAPSULE").upper()
     font_id = 0
-    line_height = 18.0
+    line_height = 20.0
     x = 104.0
     y = region.height - 148.0
     text_color = (0.96, 0.98, 1.0, 1.0)
@@ -752,10 +870,11 @@ def _draw_constraint_preview_text_overlay() -> None:
     plane_color = (0.2, 0.45, 1.0, 0.95)
     angular_color = (1.0, 0.78, 0.24, 0.95)
 
-    blf.size(font_id, 12.0)
+    blf.size(font_id, 13.0)
 
     lines: list[tuple[str, tuple[float, float, float, float]]] = [
         (f"Ragdoll body: {body_object.name}", text_color),
+        (f"Mass: {float(body_object.get(RAGDOLL_BODY_MASS_PROP, 0.0)):.2f}", text_color),
     ]
     if body_shape == "CAPSULE":
         lines.append(("Capsule shortcuts: Ctrl+Alt+Wheel or Ctrl+Up/Down = length", muted_color))
@@ -818,12 +937,34 @@ def _draw_constraint_preview_text_overlay() -> None:
             _draw_constraint_preview_text_line(font_id, x, current_y, text, color)
         current_y -= line_height
 
+    _draw_constraint_preview_angular_labels(font_id, region)
+
+
+def _draw_constraint_preview_angular_labels(font_id: int, region: bpy.types.Region) -> None:
+    labels = _CONSTRAINT_PREVIEW_ANGULAR_LABELS
+    if not labels or region is None:
+        return
+    region_data = getattr(bpy.context, "region_data", None)
+    if region_data is None:
+        return
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+
+    blf.size(font_id, 14.0)
+    for world_pos, text, color in labels:
+        screen = location_3d_to_region_2d(region, region_data, Vector(world_pos))
+        if screen is None:
+            continue
+        blf.position(font_id, screen.x + 4.0, screen.y + 4.0, 0.0)
+        blf.color(font_id, *color)
+        blf.draw(font_id, text)
+
 
 def sync_constraint_preview_objects() -> int:
     global _CONSTRAINT_PREVIEW_ARROW_SEGMENTS
     global _CONSTRAINT_PREVIEW_CONE_SEGMENTS
     global _CONSTRAINT_PREVIEW_PLANE_SEGMENTS
     global _CONSTRAINT_PREVIEW_ANGULAR_SEGMENTS
+    global _CONSTRAINT_PREVIEW_ANGULAR_LABELS
     global _CONSTRAINT_PREVIEW_LAST_SEEN_SIGNATURE
     global _CONSTRAINT_PREVIEW_LAST_SELECTED_BODIES
     global _CONSTRAINT_PREVIEW_LAST_CHANGE_TIME
@@ -880,6 +1021,7 @@ def sync_constraint_preview_objects() -> int:
                     "joint_matrix": joint_matrix.copy(),
                     "joint_head": skeleton_object.matrix_world @ bone.head_local,
                     "joint_tail": skeleton_object.matrix_world @ bone.tail_local,
+                    "reference_body": parent_body,
                     "preview_scale": max(_body_preview_scale(parent_body), _body_preview_scale(child_body)),
                     "show_plane_min": show_plane_min,
                     "show_plane_max": show_plane_max,
@@ -911,6 +1053,7 @@ def sync_constraint_preview_objects() -> int:
         _CONSTRAINT_PREVIEW_CONE_SEGMENTS = []
         _CONSTRAINT_PREVIEW_PLANE_SEGMENTS = []
         _CONSTRAINT_PREVIEW_ANGULAR_SEGMENTS = []
+        _CONSTRAINT_PREVIEW_ANGULAR_LABELS = []
         _tag_constraint_preview_redraw()
         return 0
 
@@ -923,15 +1066,18 @@ def sync_constraint_preview_objects() -> int:
     cone_segments: list[tuple[Vector, Vector]] = []
     plane_segments: list[tuple[Vector, Vector]] = []
     angular_segments: list[tuple[Vector, Vector]] = []
+    angular_labels: list[tuple[tuple[float, float, float], str, tuple[float, float, float, float]]] = []
     for record in records:
-        record_cone_segments, record_plane_segments, record_angular_segments = _build_constraint_preview_segments(record)
+        record_cone_segments, record_plane_segments, record_angular_segments, record_labels = _build_constraint_preview_segments(record)
         cone_segments.extend(record_cone_segments)
         plane_segments.extend(record_plane_segments)
         angular_segments.extend(record_angular_segments)
+        angular_labels.extend(record_labels)
 
     _CONSTRAINT_PREVIEW_CONE_SEGMENTS = cone_segments
     _CONSTRAINT_PREVIEW_PLANE_SEGMENTS = plane_segments
     _CONSTRAINT_PREVIEW_ANGULAR_SEGMENTS = angular_segments
+    _CONSTRAINT_PREVIEW_ANGULAR_LABELS = angular_labels
 
     _CONSTRAINT_PREVIEW_ARROW_SEGMENTS = arrow_segments
     _tag_constraint_preview_redraw()

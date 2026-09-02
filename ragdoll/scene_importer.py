@@ -47,7 +47,7 @@ class RagdollImporter:
             animation_object,
             scene_data,
             ragdoll_name=target_name,
-            prefer_reference_pose_display=True,
+            prefer_reference_pose_display=False,
         )
 
     def import_model_source_armature(

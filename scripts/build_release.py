@@ -31,6 +31,14 @@ ADDON_NAME = "dow2_tools"
 SIMULATOR_NAME = "havok-simulator"
 SIMULATOR_VERSION = "1.0.0"
 
+
+def normalize_version_tag(version: str) -> str:
+    """Normalize a version string for archive names, preserving an optional leading v."""
+    cleaned = version.strip()
+    if not cleaned:
+        raise ValueError("Version string cannot be empty.")
+    return cleaned if cleaned.lower().startswith("v") else f"v{cleaned}"
+
 # Compiled binaries that must ship with the release even though git ignores them.
 # Paths are relative to the addon root.
 REQUIRED_BINARIES = [
@@ -46,6 +54,7 @@ EXCLUDE_DIRS = {
     ".venv",
     ".vscode",
     ".codewhale",
+    ".pytest_cache",
     "dist",
     "scripts",
     "working",
@@ -238,12 +247,35 @@ def _copy_tree(source_dir: Path, destination_dir: Path) -> int:
     return copied
 
 
+def ensure_simulator_guide_pdf(addon_root: Path) -> Path:
+    """Ensure the simulator guide PDF exists and is current before bundling it."""
+    guide_root = addon_root / "working" / "guide"
+    guide_markdown = guide_root / "Havok Simulator Guide.md"
+    guide_pdf = guide_root / "Havok Simulator Guide.pdf"
+
+    if guide_markdown.is_file() and guide_pdf.is_file():
+        if guide_markdown.stat().st_mtime <= guide_pdf.stat().st_mtime:
+            return guide_pdf
+
+    subprocess.run([
+        sys.executable,
+        str(addon_root / "scripts" / "build_tutorial_pdf.py"),
+        "--guide",
+        "simulator",
+    ], cwd=str(addon_root), check=True)
+
+    if not guide_pdf.is_file():
+        raise FileNotFoundError(f"Missing simulator guide PDF after build: {guide_pdf}")
+    return guide_pdf
+
+
 def build_simulator_release(addon_root: Path, output_dir: Path, base_name: str, version: str) -> Path:
     simulator_root = addon_root / "havok_simulator"
     simulator_media_dir = simulator_root / "media"
     guide_root = addon_root / "working" / "guide"
-    guide_pdf = guide_root / "Havok Simulator Guide.pdf"
-    stage_name = f"{base_name}-{version}"
+    guide_pdf = ensure_simulator_guide_pdf(addon_root)
+    version_tag = normalize_version_tag(version)
+    stage_name = f"{base_name}-{version_tag}"
     zip_path = output_dir / f"{stage_name}.zip"
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -305,9 +337,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Override the archive base name.",
     )
     parser.add_argument(
+        "--version",
+        default=None,
+        help="Version tag to include in the archive name; accepts values like 1.1 or v1.1.",
+    )
+    parser.add_argument(
         "--sim-version",
-        default=SIMULATOR_VERSION,
-        help=f"Simulator package version (default: {SIMULATOR_VERSION}).",
+        default=None,
+        help=f"Simulator package version override (default: {SIMULATOR_VERSION}).",
     )
     args = parser.parse_args(argv)
 
@@ -320,7 +357,8 @@ def main(argv: list[str] | None = None) -> int:
             build_addon_release(addon_root, output_dir, base_name)
         else:
             base_name = args.name or SIMULATOR_NAME
-            build_simulator_release(addon_root, output_dir, base_name, args.sim_version)
+            resolved_version = normalize_version_tag(args.version or args.sim_version or SIMULATOR_VERSION)
+            build_simulator_release(addon_root, output_dir, base_name, resolved_version)
     except (FileNotFoundError, RuntimeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

@@ -41,6 +41,15 @@ def _matrix_from_raw_transform(transform: dict[str, Sequence[float]]) -> Matrix:
     return dx_to_blender_matrix(matrix)
 
 
+def _apply_linear_child_bone_length(edit_bone: bpy.types.EditBone) -> None:
+    if len(edit_bone.children) != 1:
+        return
+
+    new_length = (edit_bone.children[0].head - edit_bone.head).length
+    if new_length > 1e-3:
+        edit_bone.length = new_length
+
+
 def _resolve_bone_length(source_armature: bpy.types.Object, source_bone_name: str | None) -> float:
     source_bone = _find_source_bone(source_armature, source_bone_name)
     if source_bone is None:
@@ -102,6 +111,7 @@ def create_scene_animation_skeleton(
     armature_data = bpy.data.armatures.new(collection_name)
     armature_obj = bpy.data.objects.new(collection_name, armature_data)
     armature_obj[RAGDOLL_ANIMATION_SKELETON_PROP] = True
+    mark_armature_bone_axis_adapter(armature_data)
     link_object_to_collection(armature_obj, animation_collection)
 
     prior_active = context.view_layer.objects.active
@@ -112,6 +122,7 @@ def create_scene_animation_skeleton(
     armature_obj.select_set(True)
     bpy.ops.object.mode_set(mode="EDIT")
 
+    use_bone_axis_adapter = armature_uses_bone_axis_adapter(armature_data)
     edit_bones: list[bpy.types.EditBone] = []
     world_matrices: list[Matrix] = []
     for index, transform in enumerate(reference_pose):
@@ -122,19 +133,17 @@ def create_scene_animation_skeleton(
 
         edit_bone = armature_data.edit_bones.new(bones[index])
         edit_bone.use_connect = False
+        edit_bone.head = (0.0, 0.0, 0.0)
+        edit_bone.tail = (0.5, 0.0, 0.0)
+        edit_bone.inherit_scale = 'NONE'
         if parent_index >= 0:
             edit_bone.parent = edit_bones[parent_index]
-
-        head = world_matrix.to_translation()
-        y_axis = world_matrix.to_3x3() @ Vector((0.0, 1.0, 0.0))
-        z_axis = world_matrix.to_3x3() @ Vector((0.0, 0.0, 1.0))
-        if y_axis.length < 0.001:
-            y_axis = Vector((0.0, 1.0, 0.0))
-        edit_bone.head = head
-        edit_bone.tail = head + y_axis.normalized() * 0.1
-        if z_axis.length >= 0.001:
-            edit_bone.align_roll(z_axis)
+        display_world_matrix = apply_bone_axis_adapter(world_matrix) if use_bone_axis_adapter else world_matrix
+        edit_bone.matrix = display_world_matrix
         edit_bones.append(edit_bone)
+
+    for edit_bone in edit_bones:
+        _apply_linear_child_bone_length(edit_bone)
 
     bpy.ops.object.mode_set(mode="OBJECT")
     pose_by_name = dict(zip(bones, reference_pose))
@@ -208,6 +217,9 @@ def create_scene_ragdoll_skeleton(
         source_bone = _find_source_bone(source_armature, ragdoll_bone_map.get(bone_name))
         edit_bone = armature_data.edit_bones.new(bone_name)
         edit_bone.use_connect = False
+        edit_bone.head = (0.0, 0.0, 0.0)
+        edit_bone.tail = (0.5, 0.0, 0.0)
+        edit_bone.inherit_scale = 'NONE'
         if parent_index >= 0:
             edit_bone.parent = edit_bones[parent_index]
         if source_bone is not None and not prefer_reference_pose_display:
@@ -220,36 +232,16 @@ def create_scene_ragdoll_skeleton(
                 edit_bone.align_roll(source_roll_axis)
         else:
             edit_bone.matrix = display_world_matrix
-            head = display_world_matrix.to_translation()
-            length = _resolve_bone_length(source_armature, ragdoll_bone_map.get(bone_name))
-            tail_direction = display_world_matrix.to_3x3() @ Vector((0.0, length, 0.0))
-            if tail_direction.length < 0.001:
-                tail_direction = Vector((0.0, length, 0.0))
-            edit_bone.head = head
-            edit_bone.tail = head + tail_direction
             reference_pose_indices.append(index)
         edit_bones.append(edit_bone)
 
-    # Second pass (reference-pose display only): point each display bone's tail at
-    # its primary child's head so the skeleton reads like the .model armature
-    # instead of following each bone's arbitrary Havok joint axis. Leaf bones keep
-    # the axis-derived tail from the first pass.
+    # Match the .model importer: only snap single-child chains to their child's
+    # head. Branch bones keep their matrix-driven display instead of choosing an
+    # arbitrary child and skewing the skeleton toward one branch.
     if reference_pose_indices:
-        children_by_parent: dict[int, list[int]] = {}
-        for child_index, parent_index in enumerate(ragdoll_skeleton["parent_indices"]):
-            if parent_index is not None and parent_index >= 0:
-                children_by_parent.setdefault(parent_index, []).append(child_index)
         for index in reference_pose_indices:
-            child_indices = children_by_parent.get(index)
-            if not child_indices:
-                continue
-            branching_children = [child for child in child_indices if children_by_parent.get(child)]
-            primary_child = branching_children[0] if branching_children else child_indices[0]
             edit_bone = edit_bones[index]
-            child_head = edit_bones[primary_child].head.copy()
-            if (child_head - edit_bone.head).length < 0.001:
-                continue
-            edit_bone.tail = child_head
+            _apply_linear_child_bone_length(edit_bone)
             roll_axis = display_roll_axes[index]
             if roll_axis.length >= 0.001:
                 edit_bone.align_roll(roll_axis)
