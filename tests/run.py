@@ -88,7 +88,8 @@ def _run_inside_blender(ns: argparse.Namespace) -> int:
     print(f"[run] config: {config.source}")
     print(
         f"[run] scope: {config.scope} "
-        f"(models<= {config.model_limit}, anims<= {config.animation_limit}, physics<= {config.physics_limit})"
+        f"(models<= {config.model_limit}, anims<= {config.animation_limit}, "
+        f"physics<= {config.physics_limit}, ragdolls<= {config.ragdoll_limit})"
     )
     print(f"[run] data_root available: {config.data_root_available}")
     print(f"[run] discovered {len(tests)} test(s)\n")

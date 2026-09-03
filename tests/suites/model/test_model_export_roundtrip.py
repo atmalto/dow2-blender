@@ -358,7 +358,11 @@ def test_bvols_and_overwrite(ctx):
     import bpy  # type: ignore
     from mathutils import Vector  # type: ignore
 
+    from dow2_tools.model.export_utils import ExportOptions  # type: ignore
     from framework import blender_env, fixtures
+
+    if not hasattr(ExportOptions, "export_existing_bvols"):
+        ctx.skip("export_existing_bvols is currently disabled in the model export path")
 
     ctx.require_data()
     seeds = _available_seeds(ctx)

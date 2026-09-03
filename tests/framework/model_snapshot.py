@@ -113,6 +113,7 @@ def _per_vertex_custom_normals(mesh) -> dict:
 
 def _capture_materials() -> dict:
     import bpy  # type: ignore
+    from dow2_tools.material.schema import schema_material_variables  # type: ignore
 
     out: dict = {}
     for mat in bpy.data.materials:
@@ -120,11 +121,8 @@ def _capture_materials() -> dict:
         if not dow2_keys:
             continue
         params: dict = {}
-        for key in dow2_keys:
-            short = key[len("dow2_"):]
-            if short in ("shader", "shader_path"):
-                continue
-            params[short] = _jsonify(mat[key])
+        for var in schema_material_variables(mat):
+            params[var.name] = _jsonify(var.value)
         out[mat.name] = {
             "shader": mat.get("dow2_shader", ""),
             "shader_path": mat.get("dow2_shader_path", ""),

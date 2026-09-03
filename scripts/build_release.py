@@ -67,7 +67,6 @@ EXCLUDE_DIRS = {
     "dow2_tools",  # nested duplicate copy inside the repo
     "destruction_physics",
     "max_script",
-    "material/dow2_.asm_and_.shader",
 }
 
 # File suffixes and names excluded everywhere in the tree.
