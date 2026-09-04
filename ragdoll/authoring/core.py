@@ -8,4 +8,5 @@ from .geometry import *
 from .preview import *
 from .props import *
 from .queries import *
+from .selection_edit import *
 from .skeleton_authoring import *

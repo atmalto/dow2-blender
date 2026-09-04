@@ -19,6 +19,8 @@ RAGDOLL_BODY_SHAPE_PROP = "dow2_ragdoll_body_shape"
 RAGDOLL_BODY_RADIUS_PROP = "dow2_ragdoll_body_radius"
 RAGDOLL_BODY_HEIGHT_PROP = "dow2_ragdoll_body_height"
 RAGDOLL_BODY_LENGTH_PROP = "dow2_ragdoll_body_length"
+RAGDOLL_BODY_SHAPE_OFFSET_PROP = "dow2_ragdoll_body_shape_offset"
+RAGDOLL_MIN_BODY_DIMENSION = 0.0001
 RAGDOLL_BODY_VERTEX_A_PROP = "dow2_ragdoll_body_vertex_a"
 RAGDOLL_BODY_VERTEX_B_PROP = "dow2_ragdoll_body_vertex_b"
 # Marks a body whose object origin is authoritative (imported at the Havok joint
@@ -55,5 +57,7 @@ RAGDOLL_PLANE_AXIS_A_PROP = "dow2_ragdoll_plane_axis_a"
 RAGDOLL_PLANE_AXIS_B_PROP = "dow2_ragdoll_plane_axis_b"
 
 BODY_SHAPE_ITEMS = [
-    ("CAPSULE", "Capsule", "Create a capsule-style body preview aligned to the bone"),
+    ("CAPSULE", "Capsule", "Create a capsule-style body aligned to the bone axis"),
+    ("SPHERE", "Sphere", "Create a spherical rigid body around the selected bone"),
+    ("BOX", "Box", "Create a box rigid body using Havok-style half extents on local X"),
 ]

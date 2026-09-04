@@ -12,10 +12,12 @@ from ..authoring import (
     BODY_SHAPE_ITEMS,
     RAGDOLL_CONSTRAINT_TYPE_PROP,
     active_ragdoll_bone,
-    apply_body_data_to_object,
+    apply_body_shape_to_selected,
+    apply_constraint_type_to_selected,
     create_or_update_bodies_for_selection,
     create_scene_ragdoll_skeleton,
     find_source_armature,
+    resolved_creation_dimensions,
     resolve_ragdoll_body_object,
     resolve_selected_ragdoll_bones,
 )
@@ -214,14 +216,20 @@ class DOW2_OT_create_ragdoll_bodies(Operator):
             return {"CANCELLED"}
 
         try:
+            body_radius, body_height, body_length = resolved_creation_dimensions(
+                settings.body_shape,
+                settings.body_radius,
+                settings.body_height,
+                settings.body_length,
+            )
             created_objects = create_or_update_bodies_for_selection(
                 context,
                 skeleton_object,
                 bone_names,
                 settings.body_shape,
-                settings.body_radius,
-                settings.body_radius * 2.0,
-                settings.body_length,
+                body_radius,
+                body_height,
+                body_length,
             )
         except Exception as exc:
             self.report({"ERROR"}, str(exc))
@@ -255,9 +263,11 @@ class DOW2_OT_set_active_ragdoll_body_shape(Operator):
         return resolve_ragdoll_body_object(context.active_object) is not None
 
     def execute(self, context):
-        body_object = resolve_ragdoll_body_object(context.active_object)
-        apply_body_data_to_object(body_object, {"shape_type": self.shape.lower()}, apply_world_transform=False)
-        self.report({"INFO"}, f"Set active rigid body shape to {self.shape.lower()}")
+        changed_bodies = apply_body_shape_to_selected(context, self.shape)
+        if not changed_bodies:
+            self.report({"ERROR"}, "Select a compatible ragdoll rigid body first")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Set {len(changed_bodies)} rigid bod{'y' if len(changed_bodies) == 1 else 'ies'} to {self.shape.lower()}")
         return {"FINISHED"}
 
 
@@ -298,8 +308,11 @@ class DOW2_OT_set_active_ragdoll_constraint_type(Operator):
         if target_bone is None or target_bone.parent is None:
             self.report({"ERROR"}, "Select a non-root ragdoll rigid body or linked bone first")
             return {"CANCELLED"}
-        target_bone[RAGDOLL_CONSTRAINT_TYPE_PROP] = self.constraint_type
-        self.report({"INFO"}, f"Set inferred constraint type to {self.constraint_type}")
+        changed_bones = apply_constraint_type_to_selected(context, self.constraint_type)
+        if not changed_bones:
+            self.report({"ERROR"}, "Select one or more compatible non-root ragdoll bodies first")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Set inferred constraint type to {self.constraint_type} on {len(changed_bones)} joint{'s' if len(changed_bones) != 1 else ''}")
         return {"FINISHED"}
 
 

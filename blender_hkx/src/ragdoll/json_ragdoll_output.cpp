@@ -345,6 +345,10 @@ namespace
 			{
 				return false;
 			}
+			if (!writeIndent(file, indentLevel + 2) || fputs("\"shape_offset\": ", file) == EOF || !writeVector(file, body.shapeOffset, 3) || fputs(",\n", file) == EOF)
+			{
+				return false;
+			}
 			if (!writeIndent(file, indentLevel + 2) || fputs("\"mass\": ", file) == EOF || !writeFloat(file, body.mass) || fputs(",\n", file) == EOF)
 			{
 				return false;

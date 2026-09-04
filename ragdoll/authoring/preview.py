@@ -12,8 +12,10 @@ from mathutils import Matrix, Vector
 from .collections import remove_collection_tree
 from .constraint_props import read_constraint_settings
 from .constants import (
+    RAGDOLL_MIN_BODY_DIMENSION,
     RAGDOLL_BODY_MASS_PROP,
     RAGDOLL_BODY_SHAPE_PROP,
+    RAGDOLL_BODY_SHAPE_OFFSET_PROP,
     RAGDOLL_BODY_VERTEX_A_PROP,
     RAGDOLL_BODY_VERTEX_B_PROP,
 )
@@ -134,6 +136,8 @@ def _selected_ragdoll_body_names() -> set[str]:
 
     selected_body_names: set[str] = set()
     for scene_object in view_layer.objects:
+        if scene_object is None:
+            continue
         if not scene_object.select_get():
             continue
         body_object = resolve_ragdoll_body_object(scene_object)
@@ -239,7 +243,7 @@ def _constraint_settings_signature(settings: dict[str, object]) -> tuple[object,
 
 
 def _body_preview_scale(body_object: bpy.types.Object) -> float:
-    radius = max(float(body_object.get("dow2_ragdoll_body_radius", 0.1)), 0.001)
+    radius = max(float(body_object.get("dow2_ragdoll_body_radius", 0.1)), RAGDOLL_MIN_BODY_DIMENSION)
     length = max(float(body_object.get("dow2_ragdoll_body_length", radius * 2.0)), radius * 2.0)
     height = max(float(body_object.get("dow2_ragdoll_body_height", radius * 2.0)), radius * 2.0)
     return max(radius * 2.5, length * 0.35, height * 0.75, 0.08)
@@ -768,6 +772,37 @@ def _positions_from_segments(segments: list[tuple[Vector, Vector]]) -> list[tupl
     return [tuple(point) for segment in segments for point in segment]
 
 
+def _body_origin_overlay_segments(body_object: bpy.types.Object | None) -> tuple[list[tuple[Vector, Vector]], Vector | None]:
+    if body_object is None:
+        return [], None
+    body_shape = str(body_object.get(RAGDOLL_BODY_SHAPE_PROP, "CAPSULE") or "CAPSULE").upper()
+    if body_shape not in {"CAPSULE", "BOX", "SPHERE"}:
+        return [], None
+
+    origin = body_object.matrix_world.translation.copy()
+    marker_size = max(_body_preview_scale(body_object) * 0.1, 0.025)
+    orientation = body_object.matrix_world.to_quaternion()
+    axis_x = orientation @ Vector((marker_size, 0.0, 0.0))
+    axis_y = orientation @ Vector((0.0, marker_size, 0.0))
+    axis_z = orientation @ Vector((0.0, 0.0, marker_size))
+    segments: list[tuple[Vector, Vector]] = [
+        (origin - axis_x, origin + axis_x),
+        (origin - axis_y, origin + axis_y),
+        (origin - axis_z, origin + axis_z),
+    ]
+    if body_shape == "CAPSULE":
+        vertex_a = body_object.matrix_world @ Vector(_vector_prop(body_object, RAGDOLL_BODY_VERTEX_A_PROP, [0.0, -0.2, 0.0]))
+        vertex_b = body_object.matrix_world @ Vector(_vector_prop(body_object, RAGDOLL_BODY_VERTEX_B_PROP, [0.0, 0.2, 0.0]))
+        segments.insert(0, (origin.copy(), vertex_b.copy()))
+        segments.insert(0, (origin.copy(), vertex_a.copy()))
+    else:
+        shape_offset = Vector(_vector_prop(body_object, RAGDOLL_BODY_SHAPE_OFFSET_PROP, [0.0, 0.0, 0.0]))
+        if shape_offset.length > 1e-6:
+            shape_center = body_object.matrix_world @ shape_offset
+            segments.insert(0, (origin.copy(), shape_center.copy()))
+    return segments, origin
+
+
 def _draw_constraint_preview_overlay() -> None:
     preview_enabled = _constraint_preview_enabled()
     body_object = _constraint_preview_overlay_body()
@@ -780,6 +815,8 @@ def _draw_constraint_preview_overlay() -> None:
     cone_positions = _positions_from_segments(_CONSTRAINT_PREVIEW_CONE_SEGMENTS)
     plane_positions = _positions_from_segments(_CONSTRAINT_PREVIEW_PLANE_SEGMENTS)
     angular_positions = _positions_from_segments(_CONSTRAINT_PREVIEW_ANGULAR_SEGMENTS)
+    origin_segments, _origin_world = _body_origin_overlay_segments(body_object)
+    origin_positions = _positions_from_segments(origin_segments)
     if preview_enabled and (arrow_line_positions or cone_positions or plane_positions or angular_positions):
         arrow_triangle_positions: list[tuple[float, float, float]] = []
         if region_data is not None:
@@ -814,6 +851,17 @@ def _draw_constraint_preview_overlay() -> None:
             shader.uniform_float("color", (1.0, 0.78, 0.24, 0.92))
             batch_for_shader(shader, "LINES", {"pos": angular_positions}).draw(shader)
 
+        gpu.state.line_width_set(1.0)
+        gpu.state.depth_test_set("LESS_EQUAL")
+        gpu.state.blend_set("NONE")
+
+    if origin_positions:
+        gpu.state.blend_set("ALPHA")
+        gpu.state.depth_test_set("NONE")
+        gpu.state.line_width_set(2.0)
+        shader.bind()
+        shader.uniform_float("color", (1.0, 1.0, 1.0, 0.95))
+        batch_for_shader(shader, "LINES", {"pos": origin_positions}).draw(shader)
         gpu.state.line_width_set(1.0)
         gpu.state.depth_test_set("LESS_EQUAL")
         gpu.state.blend_set("NONE")
@@ -888,6 +936,10 @@ def _draw_constraint_preview_text_overlay() -> None:
         lines.append(("Constraint previews are currently hidden", muted_color))
 
     lines.append(("Preview colors:", text_color))
+    if body_shape == "CAPSULE":
+        lines.append(("White = body origin and origin-to-endpoint guides", text_color))
+    else:
+        lines.append(("White = body origin marker", text_color))
     lines.append(("Red = parent/child body link", arrow_color))
     lines.append(("Aqua = cone angle limit", cone_color))
     lines.append(("Blue = plane min/max limits", plane_color))
@@ -938,6 +990,30 @@ def _draw_constraint_preview_text_overlay() -> None:
         current_y -= line_height
 
     _draw_constraint_preview_angular_labels(font_id, region)
+    _draw_body_origin_label(font_id, region, body_object)
+
+
+def _draw_body_origin_label(font_id: int, region: bpy.types.Region, body_object: bpy.types.Object | None) -> None:
+    if body_object is None:
+        return
+    _segments, origin_world = _body_origin_overlay_segments(body_object)
+    if origin_world is None:
+        return
+
+    region_data = getattr(bpy.context, "region_data", None)
+    if region_data is None:
+        return
+
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+
+    screen = location_3d_to_region_2d(region, region_data, origin_world)
+    if screen is None:
+        return
+
+    blf.size(font_id, 13.0)
+    blf.position(font_id, screen.x + 8.0, screen.y + 8.0, 0.0)
+    blf.color(font_id, 1.0, 1.0, 1.0, 1.0)
+    blf.draw(font_id, "Body Origin")
 
 
 def _draw_constraint_preview_angular_labels(font_id: int, region: bpy.types.Region) -> None:
@@ -969,6 +1045,9 @@ def sync_constraint_preview_objects() -> int:
     global _CONSTRAINT_PREVIEW_LAST_SELECTED_BODIES
     global _CONSTRAINT_PREVIEW_LAST_CHANGE_TIME
     global _CONSTRAINT_PREVIEW_WAS_ENABLED
+
+    if bpy.app.background:
+        return 0
 
     register_constraint_preview_draw_handler()
 

@@ -35,6 +35,7 @@ class ImportedRigidBody:
     bone_index: int
     shape_type: str
     radius: float
+    shape_offset: list[float] = field(default_factory=list)
     vertex_a: list[float] = field(default_factory=list)
     vertex_b: list[float] = field(default_factory=list)
     half_extents: list[float] = field(default_factory=list)

@@ -4,6 +4,7 @@ from bpy.types import Panel
 from ..ragdoll import EXPOSED_FIELD_SPECS, TEMPLATE_DRIVEN_FIELDS
 from ..ragdoll.authoring.preview import sync_constraint_preview_objects
 from ..ragdoll.authoring import (
+    body_shape_label,
     RAGDOLL_BODY_BONE_PROP,
     RAGDOLL_BODY_SHAPE_PROP,
     RAGDOLL_BODY_COLLISION_FILTER_PROP,
@@ -13,10 +14,12 @@ from ..ragdoll.authoring import (
     RAGDOLL_BODY_LINEAR_DAMPING_PROP,
     RAGDOLL_BODY_LENGTH_PROP,
     RAGDOLL_BODY_MASS_PROP,
+    RAGDOLL_MIN_BODY_DIMENSION,
     RAGDOLL_BODY_MOTION_TYPE_PROP,
     RAGDOLL_BODY_QUALITY_TYPE_PROP,
     RAGDOLL_BODY_RADIUS_PROP,
     RAGDOLL_BODY_RESTITUTION_PROP,
+    RAGDOLL_BODY_SHAPE_OFFSET_PROP,
     RAGDOLL_BODY_VERTEX_A_PROP,
     RAGDOLL_BODY_VERTEX_B_PROP,
     RAGDOLL_BODY_ANGULAR_DAMPING_PROP,
@@ -42,6 +45,7 @@ from ..ragdoll.authoring import (
     find_ragdoll_skeleton_for_body,
     find_source_armature,
     is_ragdoll_body_object,
+    normalize_body_shape,
     is_ragdoll_skeleton_object,
     resolve_ragdoll_body_object,
     read_constraint_settings,
@@ -50,6 +54,20 @@ from ..ragdoll.authoring import (
 
 
 _RAGDOLL_BODY_TOOLTIPS = {
+    RAGDOLL_BODY_RADIUS_PROP: (
+        "Capsule or sphere radius, or box half-width on the local X axis. "
+        "Havok boxes are stored with half extents, so full width is double this value."
+    ),
+    RAGDOLL_BODY_LENGTH_PROP: (
+        "Capsule end-to-end length or box length on the local Y axis."
+    ),
+    RAGDOLL_BODY_HEIGHT_PROP: (
+        "Box height on the local Z axis. Sphere and capsule height are derived from radius."
+    ),
+    RAGDOLL_BODY_SHAPE_OFFSET_PROP: (
+        "Local translation of the collision shape relative to the body origin and joint. "
+        "Use this to author Havok translated convex primitives without moving the joint frame itself."
+    ),
     RAGDOLL_BODY_RESTITUTION_PROP: (
         "How springy or bouncy the limb feels after impact or stretching. "
         "High restitution feels rubbery or cartoon-like. Low restitution feels heavy, dead-weight, or sandbag-like."
@@ -69,6 +87,16 @@ _RAGDOLL_CONSTRAINT_TOOLTIPS = {
         "How freely the limb can swing away from its resting direction. "
         "A human shoulder uses a large cone. A horse leg uses a narrow cone."
     ),
+    RAGDOLL_HINGE_MIN_PROP: (
+        "Lower rotation limit around one hinge axis. "
+        "Use this for joints that should not twist or cone, only rotate like a door hinge or a simple elbow. "
+        "More negative values allow farther rotation on the negative side of that hinge."
+    ),
+    RAGDOLL_HINGE_MAX_PROP: (
+        "Upper rotation limit around one hinge axis. "
+        "Use this for joints that should not twist or cone, only rotate like a door hinge or a simple elbow. "
+        "Larger positive values allow farther rotation on the positive side of that hinge."
+    ),
     RAGDOLL_PLANE_MIN_PROP: (
         "Directional limit inside the cone that cuts off one side of the swing range. "
         "Use it to restrict motion in a specific direction, like a knee allowing almost no forward bend."
@@ -80,20 +108,22 @@ _RAGDOLL_CONSTRAINT_TOOLTIPS = {
 }
 
 
-def _set_idprop_description(owner, prop_name: str, description: str) -> None:
+def _update_idprop_ui(owner, prop_name: str, **kwargs) -> None:
     if prop_name not in owner:
         return
     try:
-        owner.id_properties_ui(prop_name).update(description=description)
+        owner.id_properties_ui(prop_name).update(**kwargs)
     except Exception:
         return
 
 
 def _ensure_authoring_tooltips(body_object, bone) -> None:
     for prop_name, description in _RAGDOLL_BODY_TOOLTIPS.items():
-        _set_idprop_description(body_object, prop_name, description)
+        _update_idprop_ui(body_object, prop_name, description=description)
+    for prop_name in (RAGDOLL_BODY_RADIUS_PROP, RAGDOLL_BODY_LENGTH_PROP, RAGDOLL_BODY_HEIGHT_PROP):
+        _update_idprop_ui(body_object, prop_name, min=RAGDOLL_MIN_BODY_DIMENSION, soft_min=RAGDOLL_MIN_BODY_DIMENSION)
     for prop_name, description in _RAGDOLL_CONSTRAINT_TOOLTIPS.items():
-        _set_idprop_description(bone, prop_name, description)
+        _update_idprop_ui(bone, prop_name, description=description)
 
 
 def _active_armature_label(context):
@@ -168,11 +198,22 @@ def _draw_body_section(layout, context, settings):
         warning_box = body_body.box()
         warning_box.label(text="Create/replace bodies. Ensure ragdoll bone(s) selected.", icon="INFO")
 
-    body_body.label(text="Body Shape: capsule", icon="MESH_ICOSPHERE")
-    dims_row = body_body.row(align=True)
-    dims_row.prop(settings, "body_radius")
-    dims_row.prop(settings, "body_length")
-    dims_row.operator("dow2.create_ragdoll_bodies", text="Create Or Update", icon="MESH_ICOSPHERE")
+    body_body.prop(settings, "body_shape", text="Shape")
+    shape = normalize_body_shape(settings.body_shape)
+    if shape == "SPHERE":
+        body_body.prop(settings, "body_radius", text="Sphere Radius")
+    elif shape == "BOX":
+        row = body_body.row(align=True)
+        row.prop(settings, "body_radius", text="Half Width (X)")
+        row.prop(settings, "body_length", text="Length (Y)")
+        row.prop(settings, "body_height", text="Height (Z)")
+        body_body.label(text="Havok boxes use half extents internally; full width is double X.", icon="INFO")
+    else:
+        dims_row = body_body.row(align=True)
+        dims_row.prop(settings, "body_radius", text="Capsule Radius")
+        dims_row.prop(settings, "body_length", text="Capsule Length")
+    button_row = body_body.row(align=True)
+    button_row.operator("dow2.create_ragdoll_bodies", text="Create Or Update", icon="MESH_ICOSPHERE")
 
 
 def _draw_custom_vector(layout, owner, prop_name, label):
@@ -241,12 +282,26 @@ def _draw_basic_section(layout, settings, body_object, bone):
 
     body_box = basic_body.box()
     body_box.label(text="Body", icon="MESH_DATA")
-    body_box.label(text="Shape Type: capsule")
-    body_box.label(text="Move the A/B endpoint handles in the viewport to edit capsule axis and length", icon="EMPTY_AXIS")
-    row = body_box.row(align=True)
-    row.prop(body_object, f'["{RAGDOLL_BODY_RADIUS_PROP}"]', text="Capsule Radius")
-    row.prop(body_object, f'["{RAGDOLL_BODY_LENGTH_PROP}"]', text="Capsule Length")
-    body_box.label(text="Shortcuts: Ctrl+Alt+Wheel or Ctrl+Up/Down for length; Ctrl+Shift+Wheel or Ctrl+Left/Right for radius", icon="INFO")
+    body_shape = normalize_body_shape(body_object.get(RAGDOLL_BODY_SHAPE_PROP, "CAPSULE"))
+    body_box.operator_menu_enum("dow2.set_active_ragdoll_body_shape", "shape", text=f"Shape Type: {body_shape_label(body_shape)}")
+    if body_shape == "SPHERE":
+        body_box.prop(body_object, f'["{RAGDOLL_BODY_RADIUS_PROP}"]', text="Sphere Radius")
+        body_box.label(text="Sphere bodies use radius only; position and rotation stay in Advanced.", icon="INFO")
+    elif body_shape == "BOX":
+        row = body_box.row(align=True)
+        row.prop(body_object, f'["{RAGDOLL_BODY_RADIUS_PROP}"]', text="Half Width (X)")
+        row.prop(body_object, f'["{RAGDOLL_BODY_LENGTH_PROP}"]', text="Length (Y)")
+        row.prop(body_object, f'["{RAGDOLL_BODY_HEIGHT_PROP}"]', text="Height (Z)")
+        body_box.label(text="Shortcuts: Ctrl+Shift+Wheel for half width; Ctrl+Alt+Wheel for length; Ctrl+Shift+Alt+Wheel for height", icon="INFO")
+        body_box.label(text="Advanced exposes raw Havok half extents if you need exact per-axis values.", icon="INFO")
+    else:
+        body_box.label(text="Move the A/B endpoint handles in the viewport to edit capsule axis and length", icon="EMPTY_AXIS")
+        row = body_box.row(align=True)
+        row.prop(body_object, f'["{RAGDOLL_BODY_RADIUS_PROP}"]', text="Capsule Radius")
+        row.prop(body_object, f'["{RAGDOLL_BODY_LENGTH_PROP}"]', text="Capsule Length")
+        body_box.label(text="Shortcuts: Ctrl+Alt+Wheel or Ctrl+Up/Down for length; Ctrl+Shift+Wheel or Ctrl+Left/Right for radius", icon="INFO")
+    _draw_custom_vector(body_box, body_object, RAGDOLL_BODY_SHAPE_OFFSET_PROP, "Shape Offset")
+    body_box.label(text="Offset is in the body's local space and moves only the primitive, not the joint origin.", icon="INFO")
 
     constraint_box = basic_body.box()
     constraint_box.label(text="Constraint", icon="CONSTRAINT_BONE")
@@ -285,8 +340,13 @@ def _draw_advanced_section(layout, settings, body_object, bone):
 
     body_box = advanced_body.box()
     body_box.label(text="Body", icon="MESH_DATA")
-    _draw_custom_vector(body_box, body_object, RAGDOLL_BODY_VERTEX_A_PROP, "Vertex A")
-    _draw_custom_vector(body_box, body_object, RAGDOLL_BODY_VERTEX_B_PROP, "Vertex B")
+    body_shape = normalize_body_shape(body_object.get(RAGDOLL_BODY_SHAPE_PROP, "CAPSULE"))
+    if body_shape == "CAPSULE":
+        _draw_custom_vector(body_box, body_object, RAGDOLL_BODY_VERTEX_A_PROP, "Vertex A")
+        _draw_custom_vector(body_box, body_object, RAGDOLL_BODY_VERTEX_B_PROP, "Vertex B")
+    elif body_shape == "BOX":
+        _draw_custom_vector(body_box, body_object, RAGDOLL_BODY_HALF_EXTENTS_PROP, "Half Extents")
+    _draw_custom_vector(body_box, body_object, RAGDOLL_BODY_SHAPE_OFFSET_PROP, "Shape Offset")
     body_box.prop(body_object, f'["{RAGDOLL_BODY_MASS_PROP}"]', text="Mass")
     body_box.prop(body_object, "location", text="Position")
     body_box.prop(body_object, _rotation_prop_name(body_object), text="Rotation")

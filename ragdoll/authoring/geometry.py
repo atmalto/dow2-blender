@@ -7,6 +7,7 @@ import bpy
 import bmesh
 from mathutils import Matrix, Quaternion, Vector
 
+from ...model.skeleton_space import get_export_node_world_matrix
 from ...utils import blender_to_dx_matrix, blender_to_dx_position
 
 
@@ -21,6 +22,15 @@ def _capsule_segment_vertices(full_length: float, radius: float) -> tuple[list[f
         line_start = -half_line
         line_end = half_line
     return [0.0, line_start, 0.0], [0.0, line_end, 0.0]
+
+
+def _capsule_segment_vertices_from_origin(full_length: float, radius: float) -> tuple[list[float], list[float]]:
+    vertex_a, vertex_b = _capsule_segment_vertices(full_length, radius)
+    half_length = max(float(full_length), 0.001) * 0.5
+    return (
+        [float(vertex_a[0]), float(vertex_a[1] + half_length), float(vertex_a[2])],
+        [float(vertex_b[0]), float(vertex_b[1] + half_length), float(vertex_b[2])],
+    )
 
 
 def _generated_capsule_radius(bone_name: str, segment_length: float, is_leaf: bool, radius_scale_for_ragdoll_bone) -> float:
@@ -50,6 +60,21 @@ def _body_world_matrix_from_origin(origin: Vector, target: Vector) -> tuple[Matr
     matrix = rotation
     matrix.translation = origin
     return matrix, length
+
+
+def _body_world_matrix_from_export_bone_frame(
+    skeleton_object: bpy.types.Object,
+    bone_name: str,
+    translation: Vector,
+) -> Matrix:
+    bone = skeleton_object.data.bones.get(bone_name)
+    if bone is None:
+        raise KeyError(bone_name)
+    bone_matrix = get_export_node_world_matrix(bone, skeleton_object)
+    _location, rotation, _scale = bone_matrix.decompose()
+    matrix = rotation.to_matrix().to_4x4()
+    matrix.translation = translation
+    return matrix
 
 
 def _body_dx_matrix_from_segment(origin: Vector, target: Vector) -> tuple[Matrix, float]:

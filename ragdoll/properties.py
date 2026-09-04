@@ -201,24 +201,32 @@ class DOW2_RagdollSettings(PropertyGroup):
 
     body_shape: EnumProperty(
         name="Body Shape",
-        description="Preview body shape used when creating or updating ragdoll bodies",
+        description="Rigid-body primitive used when creating or updating selected ragdoll bodies",
         items=BODY_SHAPE_ITEMS,
         default="CAPSULE",
     )
 
     body_radius: FloatProperty(
         name="Radius",
-        description="Default radius used when creating or updating selected ragdoll bodies",
+        description="Capsule or sphere radius, or box half-width on local X, used when creating or updating selected ragdoll bodies",
         default=0.1,
-        min=0.001,
+        min=0.0001,
         soft_max=2.0,
+    )
+
+    body_height: FloatProperty(
+        name="Height",
+        description="Box height on local Z, used when creating or updating selected ragdoll bodies",
+        default=0.2,
+        min=0.0001,
+        soft_max=4.0,
     )
 
     body_length: FloatProperty(
         name="Length",
-        description="Default length used when creating or updating selected ragdoll bodies",
+        description="Capsule length or box length on local Y, used when creating or updating selected ragdoll bodies",
         default=0.4,
-        min=0.001,
+        min=0.0001,
         soft_max=4.0,
     )
 

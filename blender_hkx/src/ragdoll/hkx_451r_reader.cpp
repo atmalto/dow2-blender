@@ -395,23 +395,17 @@ namespace
 			}
 		case HK_SHAPE_CONVEX_TRANSLATE:
 			{
-				// A sphere/box/capsule offset from the body origin. There is no mesh
-				// here -- unwrap to the child primitive and fold the local offset
-				// into the body's world position so it imports as a normal, editable
-				// primitive. (The game loads plain sphere/box/capsule ragdoll bodies
-				// fine, so export never needs to re-wrap this.)
+				// Preserve the wrapper as explicit local shape_offset data so Blender
+				// can keep the body origin on the joint while authoring the translated
+				// primitive separately.
 				const hkpConvexTranslateShape* translateShape = static_cast<const hkpConvexTranslateShape*>(shape);
 				if (!extractShape(translateShape->getChildShape(), bodyOut))
 				{
 					return false;
 				}
-				hkQuaternion bodyRot;
-				bodyRot.set(bodyOut.rotation[0], bodyOut.rotation[1], bodyOut.rotation[2], bodyOut.rotation[3]);
-				hkVector4 worldOffset;
-				worldOffset.setRotatedDir(bodyRot, translateShape->getTranslation());
-				bodyOut.position[0] += worldOffset(0);
-				bodyOut.position[1] += worldOffset(1);
-				bodyOut.position[2] += worldOffset(2);
+				bodyOut.shapeOffset[0] += translateShape->getTranslation()(0);
+				bodyOut.shapeOffset[1] += translateShape->getTranslation()(1);
+				bodyOut.shapeOffset[2] += translateShape->getTranslation()(2);
 				return true;
 			}
 		case HK_SHAPE_CONVEX_TRANSFORM:
@@ -475,6 +469,7 @@ namespace
 		storeVector3(rigidBody->getPosition(), bodyOut.position);
 		bodyOut.position[3] = 0.0f;
 		storeQuaternion(rigidBody->getRotation(), bodyOut.rotation);
+		bodyOut.shapeOffset[0] = bodyOut.shapeOffset[1] = bodyOut.shapeOffset[2] = 0.0f;
 		bodyOut.linearDamping = rigidBody->getLinearDamping();
 		bodyOut.angularDamping = rigidBody->getAngularDamping();
 		bodyOut.collisionFilterInfo = static_cast<int>(rigidBody->getCollisionFilterInfo());

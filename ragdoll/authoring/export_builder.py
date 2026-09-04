@@ -20,11 +20,13 @@ from .constants import (
     RAGDOLL_BODY_RADIUS_PROP,
     RAGDOLL_BODY_RESTITUTION_PROP,
     RAGDOLL_BODY_SHAPE_PROP,
+    RAGDOLL_BODY_SHAPE_OFFSET_PROP,
     RAGDOLL_BODY_VERTEX_A_PROP,
     RAGDOLL_BODY_VERTEX_B_PROP,
     RAGDOLL_MAPPING_TRANSFORM_PROP,
     RAGDOLL_SOURCE_BONE_PROP,
 )
+from .body_offset_helpers import has_shape_offset, normalized_shape_offset
 from .constraint_props import read_constraint_settings
 from .geometry import _authored_body_dx_transform, _blender_vector_to_dx_local
 from .queries import _body_object_by_bone_name, _bone_local_transform, _ragdoll_bones_in_order
@@ -100,6 +102,7 @@ def build_authored_ragdoll_data(
         length = float(body_object.get(RAGDOLL_BODY_LENGTH_PROP, radius * 2.0))
         vertex_a = list(body_object.get(RAGDOLL_BODY_VERTEX_A_PROP, [0.0, 0.0, 0.0]))
         vertex_b = list(body_object.get(RAGDOLL_BODY_VERTEX_B_PROP, [0.0, 0.0, 0.0]))
+        shape_offset = normalized_shape_offset(body_object.get(RAGDOLL_BODY_SHAPE_OFFSET_PROP, [0.0, 0.0, 0.0]))
         vertex_a_dx = _blender_vector_to_dx_local(vertex_a)
         vertex_b_dx = _blender_vector_to_dx_local(vertex_b)
         position_vec, rotation_quat = _authored_body_dx_transform(body_object, shape.lower(), vertex_a, vertex_b)
@@ -129,6 +132,10 @@ def build_authored_ragdoll_data(
         else:
             body_data["vertex_a"] = vertex_a_dx
             body_data["vertex_b"] = vertex_b_dx
+        if has_shape_offset(shape_offset):
+            body_data["shape_offset"] = _blender_vector_to_dx_local(shape_offset)
+        elif "shape_offset" in body_data:
+            del body_data["shape_offset"]
 
         # Bodies whose collision shape is offset from the joint (imported from a
         # convex-translate wrapper) sit at the shape centre, but their joints and
@@ -137,7 +144,7 @@ def build_authored_ragdoll_data(
         # Restore the shipped encoding: place the body ON its bone and record the
         # offset so the writer re-wraps the shape in a convex-translate.
         bone = skeleton_object.data.bones.get(bone_name)
-        if bone is not None:
+        if bone is not None and not has_shape_offset(shape_offset):
             bone_world = skeleton_object.matrix_world @ bone.head_local
             gap_world = body_object.matrix_world.translation - bone_world
             if gap_world.length > 1.0e-4:

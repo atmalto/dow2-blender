@@ -12,15 +12,18 @@ from .constants import (
     RAGDOLL_BODY_HEIGHT_PROP,
     RAGDOLL_BODY_JOINT_ORIGIN_PROP,
     RAGDOLL_BODY_LENGTH_PROP,
+    RAGDOLL_MIN_BODY_DIMENSION,
     RAGDOLL_BODY_PROP,
     RAGDOLL_BODY_RADIUS_PROP,
     RAGDOLL_BODY_SHAPE_PROP,
+    RAGDOLL_BODY_SHAPE_OFFSET_PROP,
     RAGDOLL_BODY_VERTEX_A_PROP,
     RAGDOLL_BODY_VERTEX_B_PROP,
     RAGDOLL_CAPSULE_HANDLE_BODY_PROP,
     RAGDOLL_CAPSULE_HANDLE_ENDPOINT_PROP,
     RAGDOLL_CAPSULE_HANDLE_PROP,
 )
+from .body_offset_helpers import has_shape_offset, shape_offset_vector
 from .body_authoring import update_body_mesh
 from .geometry import _capsule_segment_vertices
 from .props import _identity_scale, _rounded_float, _rounded_vector, _scale_components, _vector_prop
@@ -135,11 +138,13 @@ def _remove_capsule_handles(body_object: bpy.types.Object) -> None:
 def _observed_body_state(body_object: bpy.types.Object) -> dict[str, object]:
     location, rotation, _world_scale = body_object.matrix_world.decompose()
     handle_a, handle_b = _capsule_handle_local_positions(body_object)
+    shape_offset = _vector_prop(body_object, RAGDOLL_BODY_SHAPE_OFFSET_PROP, [0.0, 0.0, 0.0])
     return {
         "shape": str(body_object.get(RAGDOLL_BODY_SHAPE_PROP, "CAPSULE") or "CAPSULE").upper(),
         "radius": _rounded_float(body_object.get(RAGDOLL_BODY_RADIUS_PROP, 0.1)),
         "height": _rounded_float(body_object.get(RAGDOLL_BODY_HEIGHT_PROP, 0.2)),
         "length": _rounded_float(body_object.get(RAGDOLL_BODY_LENGTH_PROP, 0.4)),
+        "shape_offset": _rounded_vector(shape_offset),
         "vertex_a": _rounded_vector(_vector_prop(body_object, RAGDOLL_BODY_VERTEX_A_PROP, [0.0, -0.2, 0.0])),
         "vertex_b": _rounded_vector(_vector_prop(body_object, RAGDOLL_BODY_VERTEX_B_PROP, [0.0, 0.2, 0.0])),
         "handle_a": _rounded_vector(handle_a if handle_a is not None else [0.0, -0.2, 0.0]),
@@ -155,14 +160,16 @@ def _sync_capsule_body(
     body_object: bpy.types.Object,
     previous_state: dict[str, object] | None,
     shape_changed: bool,
+    shape_offset_changed: bool,
     force: bool = False,
 ) -> bool:
-    radius = max(float(body_object.get(RAGDOLL_BODY_RADIUS_PROP, 0.1)), 0.001)
-    length = max(float(body_object.get(RAGDOLL_BODY_LENGTH_PROP, 0.4)), 0.001)
+    radius = max(float(body_object.get(RAGDOLL_BODY_RADIUS_PROP, 0.1)), RAGDOLL_MIN_BODY_DIMENSION)
+    length = max(float(body_object.get(RAGDOLL_BODY_LENGTH_PROP, 0.4)), RAGDOLL_MIN_BODY_DIMENSION)
+    shape_offset = shape_offset_vector(body_object.get(RAGDOLL_BODY_SHAPE_OFFSET_PROP, [0.0, 0.0, 0.0]))
     scale = [abs(float(body_object.scale.x)), abs(float(body_object.scale.y)), abs(float(body_object.scale.z))]
     scale_changed = not _identity_scale(scale)
-    prop_vertex_a = _vector_prop(body_object, RAGDOLL_BODY_VERTEX_A_PROP, [0.0, -max(length * 0.5, 0.001), 0.0])
-    prop_vertex_b = _vector_prop(body_object, RAGDOLL_BODY_VERTEX_B_PROP, [0.0, max(length * 0.5, 0.001), 0.0])
+    prop_vertex_a = _vector_prop(body_object, RAGDOLL_BODY_VERTEX_A_PROP, [0.0, -max(length * 0.5, RAGDOLL_MIN_BODY_DIMENSION), 0.0])
+    prop_vertex_b = _vector_prop(body_object, RAGDOLL_BODY_VERTEX_B_PROP, [0.0, max(length * 0.5, RAGDOLL_MIN_BODY_DIMENSION), 0.0])
     handle_vertex_a, handle_vertex_b = _capsule_handle_local_positions(body_object)
     handles_missing = handle_vertex_a is None or handle_vertex_b is None
 
@@ -183,17 +190,22 @@ def _sync_capsule_body(
         or _rounded_vector(handle_vertex_b) != previous_state["handle_b"]
     )
 
-    if handle_verts_changed:
-        vertex_a = handle_vertex_a
-        vertex_b = handle_vertex_b
-        length = max((Vector(vertex_b) - Vector(vertex_a)).length, 0.001)
-    elif prop_verts_changed:
+    if handle_verts_changed and not shape_offset_changed:
+        vertex_a = list(Vector(handle_vertex_a) - shape_offset)
+        vertex_b = list(Vector(handle_vertex_b) - shape_offset)
+        length = max((Vector(vertex_b) - Vector(vertex_a)).length, RAGDOLL_MIN_BODY_DIMENSION)
+    elif prop_verts_changed or shape_offset_changed:
         vertex_a = prop_vertex_a
         vertex_b = prop_vertex_b
-        length = max((Vector(vertex_b) - Vector(vertex_a)).length, 0.001)
+        length = max((Vector(vertex_b) - Vector(vertex_a)).length, RAGDOLL_MIN_BODY_DIMENSION)
     else:
-        base_vertex_a = handle_vertex_a if handle_vertex_a is not None else prop_vertex_a
-        base_vertex_b = handle_vertex_b if handle_vertex_b is not None else prop_vertex_b
+        # Dimension-only refreshes must start from the stored logical capsule
+        # endpoints, not the displayed handle positions. When shape_offset is
+        # nonzero, the handles already include that visual translation; using
+        # them here bakes the offset into the capsule geometry and then applies
+        # the offset again on rebuild.
+        base_vertex_a = prop_vertex_a
+        base_vertex_b = prop_vertex_b
         if dims_changed:
             # The user changed the radius/length dimensions, so re-derive the
             # capsule segment endpoints from the new length about the existing
@@ -215,16 +227,16 @@ def _sync_capsule_body(
             # imported bodies, silently shrinks the exported Havok capsule.
             vertex_a = list(base_vertex_a)
             vertex_b = list(base_vertex_b)
-            length = max((Vector(vertex_b) - Vector(vertex_a)).length, 0.001)
+            length = max((Vector(vertex_b) - Vector(vertex_a)).length, RAGDOLL_MIN_BODY_DIMENSION)
 
     midpoint = (Vector(vertex_a) + Vector(vertex_b)) * 0.5
-    joint_anchored = bool(body_object.get(RAGDOLL_BODY_JOINT_ORIGIN_PROP, False))
+    joint_anchored = bool(body_object.get(RAGDOLL_BODY_JOINT_ORIGIN_PROP, False)) or has_shape_offset(shape_offset)
     if midpoint.length > 0.000001 and not joint_anchored:
         body_object.matrix_world.translation = body_object.matrix_world.translation + (body_object.matrix_world.to_quaternion() @ midpoint)
         vertex_a = list(Vector(vertex_a) - midpoint)
         vertex_b = list(Vector(vertex_b) - midpoint)
 
-    if not (force or scale_changed or shape_changed or dims_changed or prop_verts_changed or handle_verts_changed or handles_missing):
+    if not (force or scale_changed or shape_changed or shape_offset_changed or dims_changed or prop_verts_changed or handle_verts_changed or handles_missing):
         return False
 
     update_body_mesh(
@@ -235,6 +247,7 @@ def _sync_capsule_body(
         length,
         vertex_a=vertex_a,
         vertex_b=vertex_b,
+        shape_offset=shape_offset,
     )
     body_object[RAGDOLL_BODY_VERTEX_A_PROP] = vertex_a
     body_object[RAGDOLL_BODY_VERTEX_B_PROP] = vertex_b
@@ -246,20 +259,22 @@ def _sync_box_body(
     body_object: bpy.types.Object,
     previous_state: dict[str, object] | None,
     shape_changed: bool,
+    shape_offset_changed: bool,
     force: bool = False,
 ) -> bool:
-    radius = max(float(body_object.get(RAGDOLL_BODY_RADIUS_PROP, 0.1)), 0.001)
-    height = max(float(body_object.get(RAGDOLL_BODY_HEIGHT_PROP, 0.2)), 0.001)
-    length = max(float(body_object.get(RAGDOLL_BODY_LENGTH_PROP, 0.4)), 0.001)
+    radius = max(float(body_object.get(RAGDOLL_BODY_RADIUS_PROP, 0.1)), RAGDOLL_MIN_BODY_DIMENSION)
+    height = max(float(body_object.get(RAGDOLL_BODY_HEIGHT_PROP, 0.2)), RAGDOLL_MIN_BODY_DIMENSION)
+    length = max(float(body_object.get(RAGDOLL_BODY_LENGTH_PROP, 0.4)), RAGDOLL_MIN_BODY_DIMENSION)
+    shape_offset = _vector_prop(body_object, RAGDOLL_BODY_SHAPE_OFFSET_PROP, [0.0, 0.0, 0.0])
     half_extents = _vector_prop(body_object, RAGDOLL_BODY_HALF_EXTENTS_PROP, [radius, length * 0.5, height * 0.5])
     scale = [abs(float(body_object.scale.x)), abs(float(body_object.scale.y)), abs(float(body_object.scale.z))]
     scale_changed = not _identity_scale(scale)
 
     if scale_changed:
         half_extents = _scale_components(half_extents, scale)
-        radius = max(abs(half_extents[0]), 0.001)
-        length = max(abs(half_extents[1]) * 2.0, 0.001)
-        height = max(abs(half_extents[2]) * 2.0, 0.001)
+        radius = max(abs(half_extents[0]), RAGDOLL_MIN_BODY_DIMENSION)
+        length = max(abs(half_extents[1]) * 2.0, RAGDOLL_MIN_BODY_DIMENSION)
+        height = max(abs(half_extents[2]) * 2.0, RAGDOLL_MIN_BODY_DIMENSION)
         body_object.scale = (1.0, 1.0, 1.0)
 
     dims_changed = previous_state is not None and (
@@ -271,16 +286,16 @@ def _sync_box_body(
 
     if previous_state is None and not (force or scale_changed):
         return False
-    if force or scale_changed or shape_changed or dims_changed:
+    if force or scale_changed or shape_changed or shape_offset_changed or dims_changed:
         half_extents = [radius, length * 0.5, height * 0.5]
     elif half_extents_changed:
-        radius = max(abs(float(half_extents[0])), 0.001)
-        length = max(abs(float(half_extents[1])) * 2.0, 0.001)
-        height = max(abs(float(half_extents[2])) * 2.0, 0.001)
+        radius = max(abs(float(half_extents[0])), RAGDOLL_MIN_BODY_DIMENSION)
+        length = max(abs(float(half_extents[1])) * 2.0, RAGDOLL_MIN_BODY_DIMENSION)
+        height = max(abs(float(half_extents[2])) * 2.0, RAGDOLL_MIN_BODY_DIMENSION)
     else:
         return False
 
-    update_body_mesh(body_object, "BOX", radius, height, length, half_extents=half_extents)
+    update_body_mesh(body_object, "BOX", radius, height, length, half_extents=half_extents, shape_offset=shape_offset)
     body_object[RAGDOLL_BODY_HALF_EXTENTS_PROP] = [radius, length * 0.5, height * 0.5]
     return True
 
@@ -289,14 +304,16 @@ def _sync_sphere_body(
     body_object: bpy.types.Object,
     previous_state: dict[str, object] | None,
     shape_changed: bool,
+    shape_offset_changed: bool,
     force: bool = False,
 ) -> bool:
-    radius = max(float(body_object.get(RAGDOLL_BODY_RADIUS_PROP, 0.1)), 0.001)
+    radius = max(float(body_object.get(RAGDOLL_BODY_RADIUS_PROP, 0.1)), RAGDOLL_MIN_BODY_DIMENSION)
+    shape_offset = _vector_prop(body_object, RAGDOLL_BODY_SHAPE_OFFSET_PROP, [0.0, 0.0, 0.0])
     scale = [abs(float(body_object.scale.x)), abs(float(body_object.scale.y)), abs(float(body_object.scale.z))]
     scale_changed = not _identity_scale(scale)
 
     if scale_changed:
-        radius = max(radius * max(scale), 0.001)
+        radius = max(radius * max(scale), RAGDOLL_MIN_BODY_DIMENSION)
         body_object.scale = (1.0, 1.0, 1.0)
 
     dims_changed = previous_state is not None and (
@@ -307,10 +324,10 @@ def _sync_sphere_body(
 
     if previous_state is None and not (force or scale_changed):
         return False
-    if not (force or scale_changed or shape_changed or dims_changed):
+    if not (force or scale_changed or shape_changed or shape_offset_changed or dims_changed):
         return False
 
-    update_body_mesh(body_object, "SPHERE", radius, radius * 2.0, radius * 2.0)
+    update_body_mesh(body_object, "SPHERE", radius, radius * 2.0, radius * 2.0, shape_offset=shape_offset)
     body_object[RAGDOLL_BODY_HALF_EXTENTS_PROP] = [radius, radius, radius]
     return True
 
@@ -325,12 +342,13 @@ def _sync_ragdoll_body_object(
         return False
 
     shape_changed = previous_state is not None and current_state["shape"] != previous_state["shape"]
+    shape_offset_changed = previous_state is not None and current_state["shape_offset"] != previous_state["shape_offset"]
     shape = str(current_state["shape"])
     if shape == "BOX":
-        return _sync_box_body(body_object, previous_state, shape_changed, force=force)
+        return _sync_box_body(body_object, previous_state, shape_changed, shape_offset_changed, force=force)
     if shape == "SPHERE":
-        return _sync_sphere_body(body_object, previous_state, shape_changed, force=force)
-    return _sync_capsule_body(body_object, previous_state, shape_changed, force=force)
+        return _sync_sphere_body(body_object, previous_state, shape_changed, shape_offset_changed, force=force)
+    return _sync_capsule_body(body_object, previous_state, shape_changed, shape_offset_changed, force=force)
 
 
 def sync_ragdoll_body_object(body_object: bpy.types.Object, force: bool = False) -> bool:
@@ -386,10 +404,16 @@ def sync_ragdoll_body_objects(force: bool = False) -> int:
 
 @persistent
 def _ragdoll_body_sync_handler(_scene=None, _depsgraph=None) -> None:
+    from .selection_edit import propagate_selected_ragdoll_edits
+
+    propagate_selected_ragdoll_edits()
     sync_ragdoll_body_objects()
 
 
 def _ragdoll_body_sync_timer() -> float | None:
+    from .selection_edit import propagate_selected_ragdoll_edits
+
+    propagate_selected_ragdoll_edits()
     sync_ragdoll_body_objects()
     return _BODY_SYNC_TIMER_INTERVAL
 

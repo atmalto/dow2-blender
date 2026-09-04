@@ -225,6 +225,41 @@ namespace
         return shape;
     }
 
+    const hkpShape* resolve_leaf_shape(const hkpShape* shape, hkVector4& local_offset)
+    {
+        local_offset.setZero4();
+        while (shape)
+        {
+            switch (shape->getType())
+            {
+            case HK_SHAPE_CONVEX_TRANSLATE:
+                {
+                    const hkpConvexTranslateShape* translate = static_cast<const hkpConvexTranslateShape*>(shape);
+                    local_offset.add4(translate->getTranslation());
+                    shape = translate->getChildShape();
+                }
+                break;
+            case HK_SHAPE_CONVEX_TRANSFORM:
+                {
+                    const hkpConvexTransformShape* transform = static_cast<const hkpConvexTransformShape*>(shape);
+                    local_offset.add4(transform->getTransform().getTranslation());
+                    shape = transform->getChildShape();
+                }
+                break;
+            case HK_SHAPE_TRANSFORM:
+                {
+                    const hkpTransformShape* transform = static_cast<const hkpTransformShape*>(shape);
+                    local_offset.add4(transform->getTransform().getTranslation());
+                    shape = transform->getChildShape();
+                }
+                break;
+            default:
+                return shape;
+            }
+        }
+        return shape;
+    }
+
     RagdollPreviewBodyShapeType preview_shape_type_from_havok(hkpShapeType shape_type)
     {
         switch (shape_type)
@@ -240,19 +275,24 @@ namespace
         }
     }
 
-    bool build_render_state_from_body(const hkpRigidBody& rigid_body, BodyRenderState* render_state)
+    bool build_render_state_from_body(const hkpRigidBody& rigid_body, BodyRenderState* render_state, hkVector4* local_offset)
     {
         const hkpShape* shape = rigid_body.getCollidable()->getShape();
+        hkVector4 wrapper_local_offset;
 
         if (!shape || !render_state)
         {
             return false;
         }
 
-        shape = resolve_leaf_shape(shape);
+        shape = resolve_leaf_shape(shape, wrapper_local_offset);
         if (!shape)
         {
             return false;
+        }
+        if (local_offset)
+        {
+            *local_offset = wrapper_local_offset;
         }
 
         switch (shape->getType())
@@ -305,16 +345,24 @@ namespace
         }
     }
 
-    void fill_render_transform(const hkpRigidBody& rigid_body, BodyRenderState* render_state)
+    void fill_render_transform(const hkpRigidBody& rigid_body, const hkVector4& local_offset, BodyRenderState* render_state)
     {
         if (!render_state)
         {
             return;
         }
 
-        render_state->position[0] = rigid_body.getPosition()(0);
-        render_state->position[1] = rigid_body.getPosition()(1);
-        render_state->position[2] = rigid_body.getPosition()(2);
+        hkVector4 render_position = rigid_body.getPosition();
+        if (local_offset(0) != 0.0f || local_offset(1) != 0.0f || local_offset(2) != 0.0f)
+        {
+            hkVector4 world_offset;
+            world_offset.setRotatedDir(rigid_body.getRotation(), local_offset);
+            render_position.add4(world_offset);
+        }
+
+        render_state->position[0] = render_position(0);
+        render_state->position[1] = render_position(1);
+        render_state->position[2] = render_position(2);
         render_state->rotation[0] = rigid_body.getRotation()(0);
         render_state->rotation[1] = rigid_body.getRotation()(1);
         render_state->rotation[2] = rigid_body.getRotation()(2);
@@ -429,12 +477,13 @@ bool build_ragdoll_preview_data(
                 }
             }
 
-            body.has_render_state = build_render_state_from_body(*rigid_body, &body.render_state);
+            hkVector4 local_offset;
+            body.has_render_state = build_render_state_from_body(*rigid_body, &body.render_state, &local_offset);
             if (body.has_render_state)
             {
                 body.render_state.entity_id = entity_id;
                 body.render_state.entity_kind = SceneEntityKindRagdoll;
-                fill_render_transform(*rigid_body, &body.render_state);
+                fill_render_transform(*rigid_body, local_offset, &body.render_state);
             }
 
             body.position[0] = rigid_body->getPosition()(0);

@@ -4,11 +4,20 @@ import bpy
 from bpy.props import EnumProperty, FloatProperty
 from bpy.types import Operator
 
-from ..authoring import RAGDOLL_BODY_LENGTH_PROP, RAGDOLL_BODY_RADIUS_PROP, resolve_ragdoll_body_object, sync_ragdoll_body_object
+from ..authoring import (
+    RAGDOLL_BODY_HEIGHT_PROP,
+    RAGDOLL_BODY_LENGTH_PROP,
+    RAGDOLL_BODY_RADIUS_PROP,
+    RAGDOLL_MIN_BODY_DIMENSION,
+    RAGDOLL_BODY_SHAPE_PROP,
+    resolve_ragdoll_body_object,
+    sync_ragdoll_body_object,
+)
 
 
 _BODY_SHORTCUT_RADIUS_STEP = 0.01
 _BODY_SHORTCUT_LENGTH_STEP = 0.025
+_BODY_SHORTCUT_HEIGHT_STEP = 0.025
 _ADDON_KEYMAPS: list[tuple[object, object]] = []
 
 
@@ -37,13 +46,19 @@ def _adjust_active_body_dimension(context, dimension: str, delta: float) -> tupl
     prop_map = {
         "radius": RAGDOLL_BODY_RADIUS_PROP,
         "length": RAGDOLL_BODY_LENGTH_PROP,
+        "height": RAGDOLL_BODY_HEIGHT_PROP,
     }
     prop_name = prop_map.get(dimension)
     if prop_name is None:
         return False, f"Unsupported body dimension: {dimension}"
 
+    if dimension == "height":
+        active_shape = str(body_object.get(RAGDOLL_BODY_SHAPE_PROP, "CAPSULE") or "CAPSULE").upper()
+        if active_shape != "BOX":
+            return False, "Height shortcut only applies to box bodies"
+
     current_value = float(body_object.get(prop_name, 0.0))
-    body_object[prop_name] = max(0.001, current_value + float(delta))
+    body_object[prop_name] = max(RAGDOLL_MIN_BODY_DIMENSION, current_value + float(delta))
     sync_ragdoll_body_object(body_object, force=True)
     body_object.data.update()
     context.view_layer.update()
@@ -52,7 +67,7 @@ def _adjust_active_body_dimension(context, dimension: str, delta: float) -> tupl
 
 
 class DOW2_OT_adjust_active_ragdoll_body_dimension(Operator):
-    """Adjust the active ragdoll body's radius or length using shortcut-friendly deltas"""
+    """Adjust the active ragdoll body's radius, length, or box height using shortcut-friendly deltas"""
 
     bl_idname = "dow2.adjust_active_ragdoll_body_dimension"
     bl_label = "Adjust Active Ragdoll Body Dimension"
@@ -62,6 +77,7 @@ class DOW2_OT_adjust_active_ragdoll_body_dimension(Operator):
         items=[
             ("radius", "Radius", "Adjust capsule radius"),
             ("length", "Length", "Adjust capsule length"),
+            ("height", "Height", "Adjust box height"),
         ]
     )
     delta: FloatProperty(default=0.0)
@@ -90,6 +106,8 @@ def register_keymaps() -> None:
         ("WHEELDOWNMOUSE", {"ctrl": True, "alt": True}, "length", -_BODY_SHORTCUT_LENGTH_STEP),
         ("WHEELUPMOUSE", {"ctrl": True, "shift": True}, "radius", _BODY_SHORTCUT_RADIUS_STEP),
         ("WHEELDOWNMOUSE", {"ctrl": True, "shift": True}, "radius", -_BODY_SHORTCUT_RADIUS_STEP),
+        ("WHEELUPMOUSE", {"ctrl": True, "shift": True, "alt": True}, "height", _BODY_SHORTCUT_HEIGHT_STEP),
+        ("WHEELDOWNMOUSE", {"ctrl": True, "shift": True, "alt": True}, "height", -_BODY_SHORTCUT_HEIGHT_STEP),
         ("UP_ARROW", {"ctrl": True}, "length", -_BODY_SHORTCUT_LENGTH_STEP),
         ("DOWN_ARROW", {"ctrl": True}, "length", _BODY_SHORTCUT_LENGTH_STEP),
         ("LEFT_ARROW", {"ctrl": True}, "radius", -_BODY_SHORTCUT_RADIUS_STEP),

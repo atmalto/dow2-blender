@@ -270,6 +270,7 @@ class RagdollImporter:
             "bone_index": rigid_body.bone_index,
             "shape_type": rigid_body.shape_type,
             "radius": rigid_body.radius,
+            "shape_offset": list(rigid_body.shape_offset),
             "vertex_a": list(rigid_body.vertex_a),
             "vertex_b": list(rigid_body.vertex_b),
             "half_extents": list(rigid_body.half_extents),

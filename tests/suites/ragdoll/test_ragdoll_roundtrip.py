@@ -84,6 +84,11 @@ def _compare(original: dict, exported: dict) -> list[str]:
             for key in ("vertex_a", "vertex_b", "half_extents"):
                 if key in a and key in b and not _vec_equal(a[key], b[key]):
                     problems.append(f"body[{name}] {key} {a[key]} != {b[key]}")
+            shape_offset_a = a.get("shape_offset")
+            shape_offset_b = b.get("shape_offset")
+            if shape_offset_a is not None or shape_offset_b is not None:
+                if not _vec_equal(shape_offset_a or [0.0, 0.0, 0.0], shape_offset_b or [0.0, 0.0, 0.0]):
+                    problems.append(f"body[{name}] shape_offset {shape_offset_a} != {shape_offset_b}")
 
     oc = original["constraints"]
     ec = exported["constraints"]

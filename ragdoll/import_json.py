@@ -183,6 +183,11 @@ def _parse_rigid_bodies(raw_bodies: object, ragdoll_bone_count: int) -> list[Imp
                 bone_index=bone_index,
                 shape_type=shape_type,
                 radius=_require_float(raw_body.get("radius"), f"rigid_bodies[{index}].radius"),
+                shape_offset=_require_vector(
+                    raw_body.get("shape_offset", [0.0, 0.0, 0.0]),
+                    3,
+                    f"rigid_bodies[{index}].shape_offset",
+                ),
                 vertex_a=_require_vector(raw_body.get("vertex_a"), 3, f"rigid_bodies[{index}].vertex_a"),
                 vertex_b=_require_vector(raw_body.get("vertex_b"), 3, f"rigid_bodies[{index}].vertex_b"),
                 half_extents=_require_vector(
